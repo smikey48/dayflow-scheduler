@@ -170,6 +170,59 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
 
     # old_schedule_df == prior instances from Supabase (yesterday + today)
     old_schedule_df = _fetch_old_schedule_df(supabase, user_id, today)
+    # ---- Make both DataFrames resilient to missing columns ----
+    def _ensure_cols(df: pd.DataFrame, defaults: dict):
+        for col, default in defaults.items():
+            if col not in df.columns:
+                df[col] = default
+        return df
+
+    # Expected baseline columns (adjust defaults as you prefer)
+    tasks_df = _ensure_cols(tasks_df, {
+        "id": None,
+        "task": None,                 # some schemas use 'task', others 'title'
+        "title": None,
+        "repeat_unit": None,          # canonical field we’ll read
+        "repeat": None,               # legacy/alternate field we can fall back to
+        "repeat_interval": 1,
+        "repeat_day": None,
+        "start_time": "09:00:00",
+        "duration_minutes": 30,
+        "last_completed_date": None,
+        "is_template": True,          # task_templates are templates by definition
+        "date": None,
+    })
+
+    old_schedule_df = _ensure_cols(old_schedule_df, {
+        "id": None,
+        "task": None,
+        "title": None,
+        "origin_template_id": None,
+        "date": pd.Timestamp(run_date, tz=LOCAL_TIMEZONE).date(),
+        "local_date": pd.Timestamp(run_date, tz=LOCAL_TIMEZONE).date(),
+        "is_template": False,
+        "is_completed": False,
+        "is_deleted": False,
+        "repeat_unit": None,
+        "repeat_interval": 1,
+        "repeat_day": None,
+    })
+
+    # ---- Normalize repeat fields safely ----
+    # Prefer repeat_unit; if missing, backfill from repeat (if present)
+    if "repeat" in tasks_df.columns:
+        tasks_df["repeat_unit"] = tasks_df["repeat_unit"].where(
+            tasks_df["repeat_unit"].notna(), tasks_df["repeat"]
+        )
+    if "repeat" in old_schedule_df.columns:
+        old_schedule_df["repeat_unit"] = old_schedule_df["repeat_unit"].where(
+            old_schedule_df["repeat_unit"].notna(), old_schedule_df["repeat"]
+        )
+
+    # Ensure booleans are bools
+    old_schedule_df["is_template"]  = old_schedule_df["is_template"].fillna(False).astype(bool)
+    old_schedule_df["is_completed"] = old_schedule_df["is_completed"].fillna(False).astype(bool)
+    old_schedule_df["is_deleted"]   = old_schedule_df["is_deleted"].fillna(False).astype(bool)
 
     # remove duplicates by origin_template_id + date (precautionary)
     if "origin_template_id" in old_schedule_df.columns and "date" in old_schedule_df.columns:
@@ -225,8 +278,8 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
     for _, task in tasks_df.iterrows():
 
         # test for needed fields
-        repeat_unit = task.get("repeat_unit") or task.get("repeat")
-        if not repeat_unit or not task.get("is_template", True):
+        repeat_unit = (task.get("repeat_unit") or task.get("repeat") or None)
+        if not repeat_unit:
             continue
 
         # check if this template has already been marked as completed today
