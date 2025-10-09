@@ -4,6 +4,13 @@ from datetime import date
 from typing import Any, Dict, List, Tuple
 import logging
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+def to_utc_timestamp(local_date_str: str, time_str: str, tz_name: str) -> str:
+    # e.g., "2025-10-09" + "09:00:00" in Europe/London -> "2025-10-09T08:00:00+00:00" (UTC)
+    dt_local = datetime.fromisoformat(f"{local_date_str}T{time_str}").replace(tzinfo=ZoneInfo(tz_name))
+    return dt_local.astimezone(ZoneInfo("UTC")).isoformat()
 
 # --- Tiny data access helpers (Supabase) ---
 
@@ -21,14 +28,18 @@ def plan_instances_for_today(templates: List[Dict], run_date: date) -> List[Dict
     """
     instances: List[Dict] = []
     for t in templates:
+        tz_name = os.getenv("TZ", "Europe/London")
+        start_clock = t.get("start_time", "09:00:00")  # template’s clock time or default
         instances.append({
-            "template_id": t.get("id"),
-            "user_id":     t.get("user_id"),
-            "title":       t.get("title", "Untitled task"),
-            "local_date":  str(run_date),    # hybrid time model: local wall-date
-            "start_time":  t.get("start_time", "09:00:00"),   # fallback if not present
-            "duration_minutes": t.get("duration_minutes", 30),
+            "template_id":       t.get("id"),
+            "user_id":           t.get("user_id"),
+            "title":             t.get("title", "Untitled task"),
+            "local_date":        str(run_date),                # keep wall-date for grouping
+            "duration_minutes":  t.get("duration_minutes", 30),
+            # IMPORTANT: DB column 'start_time' is TIMESTAMPTZ, so send a UTC timestamp:
+            "start_time":        to_utc_timestamp(str(run_date), start_clock, tz_name),
         })
+
     logging.info("Prepared %s instance(s) for %s", len(instances), run_date)
     return instances
 
@@ -40,7 +51,10 @@ def upsert_scheduled_tasks(supabase: Any, instances: List[Dict]) -> Tuple[int, i
     if not instances:
         return (0, 0)
     # NOTE: Supabase Python SDK supports upsert; we’re using insert initially during dry-run.
-    resp = supabase.table("scheduled_tasks").insert(instances).execute()
+    resp = supabase.table("scheduled_tasks") \
+    .upsert(instances, on_conflict="user_id,local_date,template_id") \
+    .execute()
+
     inserted = len(resp.data or [])
     logging.info("Inserted %s scheduled task(s)", inserted)
     return (inserted, 0)
