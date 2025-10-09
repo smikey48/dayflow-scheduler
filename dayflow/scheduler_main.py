@@ -2,14 +2,18 @@
 import os, sys, logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from typing import Optional, Any
+
+from dayflow.planner import preprocess_recurring_tasks, schedule_day
 
 try:
-    # Supabase SDK (we'll add it to requirements in the next step)
-    from supabase import create_client
+    # Supabase SDK
+    from supabase import create_client  # type: ignore
 except Exception:
-    create_client = None  # We'll still allow the script to run without it for now.
+    create_client = None  # type: ignore
 
-def main():
+
+def main() -> int:
     # --- Logging & timezone ---
     tz_name = os.getenv("TZ", "Europe/London")
     logging.basicConfig(
@@ -19,13 +23,13 @@ def main():
     logging.info("DayFlow scheduler runner starting (tz=%s)", tz_name)
 
     # --- Optional: connect to Supabase if env vars are present ---
+    sb: Optional[Any] = None
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_KEY")
 
     if url and key and create_client:
         try:
             sb = create_client(url, key)
-            # quick ping: list schemas (cheap metadata call via PostgREST)
             logging.info("Supabase client created.")
         except Exception as e:
             logging.exception("Supabase client init failed: %s", e)
@@ -33,17 +37,22 @@ def main():
     else:
         logging.info("Supabase URL/key not set yet (or SDK not installed) — skipping connection.")
 
-    # --- Placeholder for your real work ---
+    # --- Orchestration ---
     now_local = datetime.now(ZoneInfo(tz_name))
-    logging.info("Runner heartbeat at %s", now_local.strftime("%Y-%m-%d %H:%M:%S"))
+    run_date = now_local.date()
+    logging.info("Run date = %s", run_date)
 
-    # You will later import and call:
-    # from dayflow.planner import preprocess_recurring_tasks, schedule_day
-    # instances = preprocess_recurring_tasks(run_date=now_local.date(), supabase=sb)
-    # schedule  = schedule_day(instances=instances, run_date=now_local.date(), supabase=sb)
+    instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb)
+    logging.info("Preprocessed %s instance(s)",
+                 len(instances) if hasattr(instances, "__len__") else "unknown")
+
+    schedule = schedule_day(instances=instances, run_date=run_date, supabase=sb)
+    logging.info("Scheduled %s item(s)",
+                 len(schedule) if hasattr(schedule, "__len__") else "unknown")
 
     logging.info("DayFlow scheduler runner finished OK.")
     return 0
+
 
 if __name__ == "__main__":
     try:
@@ -51,3 +60,5 @@ if __name__ == "__main__":
     except Exception:
         logging.exception("Runner crashed")
         sys.exit(1)
+
+
