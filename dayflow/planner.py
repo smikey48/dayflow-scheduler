@@ -99,7 +99,6 @@ def upsert_scheduled_tasks(supabase: Any, instances: List[Dict]) -> Tuple[int, i
 #         as it will not be automatically instantiated
 # ---------------------------------------------------------------------------
 
-from __future__ import annotations
 import os, uuid, logging
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
