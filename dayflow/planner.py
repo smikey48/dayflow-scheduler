@@ -71,21 +71,41 @@ def plan_instances_for_today(templates: List[Dict], run_date: date) -> List[Dict
     logging.info("Prepared %s instance(s) for %s", len(instances), run_date)
     return instances
 
-def upsert_scheduled_tasks(supabase: Any, instances: List[Dict]) -> Tuple[int, int]:
+def upsert_scheduled_tasks(supabase, instances):
     """
-    Write instances to scheduled_tasks. For now, simple insert (no upsert) and let DRY_RUN protect us.
-    Later we can add idempotency (on_conflict) once your columns are finalised.
+    Send only the columns our table actually has. Adjust the whitelist if your schema grows.
     """
     if not instances:
         return (0, 0)
-    # NOTE: Supabase Python SDK supports upsert; we’re using insert initially during dry-run.
-    resp = supabase.table("scheduled_tasks") \
-    .upsert(instances, on_conflict="user_id,local_date,template_id") \
-    .execute()
 
-    inserted = len(resp.data or [])
-    logging.info("Inserted %s scheduled task(s)", inserted)
-    return (inserted, 0)
+    # 🚦 Minimal, safe whitelist for your table
+    allowed = {
+        "id",            # uuid
+        "user_id",       # uuid (NOT NULL)
+        "template_id",   # uuid (NOT NULL)
+        "local_date",    # date (NOT NULL)
+        "date",          # date (NOT NULL) -- mirrors local_date for now
+        "title",         # text
+        "start_time",    # timestamptz (UTC we computed)
+        "duration_minutes",  # int
+    }
+
+    clean = [{k: v for k, v in inst.items() if k in allowed} for inst in instances]
+
+    # ⚠️ Ensure the conflict target columns are present on every row
+    for row in clean:
+        missing = [k for k in ("user_id", "local_date", "template_id") if k not in row or row[k] is None]
+        if missing:
+            raise ValueError(f"Missing required upsert keys on row: {missing}")
+
+    resp = supabase.table("scheduled_tasks") \
+        .upsert(clean, on_conflict="user_id,local_date,template_id") \
+        .execute()
+
+    upserted = len(resp.data or [])
+    logging.info("Upserted %s scheduled task(s)", upserted)
+    return (upserted, 0)
+
 
 # --- Your two top-level functions (call these from the runner) ---
 
