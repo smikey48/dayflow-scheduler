@@ -5,6 +5,34 @@ import logging
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
+# --- helpers to filter payload to existing table columns ---
+
+from typing import Set
+
+def _discover_table_columns(supabase, table: str) -> Set[str]:
+    """Try to discover existing columns by selecting one row."""
+    try:
+        resp = supabase.table(table).select("*").limit(1).execute()
+        if resp.data and isinstance(resp.data, list) and len(resp.data) > 0:
+            return set(resp.data[0].keys())
+    except Exception:
+        pass
+    # fallback: a minimal, safe set you know exists in your schema
+    if table == "scheduled_tasks":
+        return {
+            "id","user_id","template_id","local_date","date",
+            "title","start_time","duration_minutes"
+        }
+    return set()
+
+def _filter_instance_to_columns(inst: dict, allowed: Set[str]) -> dict:
+    filtered = {k: v for k, v in inst.items() if k in allowed}
+    # Optional: log anything we dropped (first time only)
+    dropped = set(inst.keys()) - allowed
+    if dropped:
+        import logging
+        logging.info("Dropping unknown columns for scheduled_tasks: %s", ", ".join(sorted(dropped)))
+    return filtered
 
 def to_utc_timestamp(local_date_str: str, time_str: str, tz_name: str) -> str:
     # e.g., "2025-10-09" + "09:00:00" in Europe/London -> "2025-10-09T08:00:00+00:00" (UTC)
