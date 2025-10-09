@@ -9,6 +9,25 @@ from zoneinfo import ZoneInfo
 
 from typing import Set
 
+from typing import Tuple, Dict as TDict, List as TList
+
+def _dedupe_by_conflict(rows: TList[dict]) -> TList[dict]:
+    """Remove duplicates that would share the same (user_id, local_date, template_id)."""
+    seen: TDict[Tuple[str,str,str], dict] = {}
+    dropped = 0
+    for r in rows:
+        k = (str(r.get("user_id")), str(r.get("local_date")), str(r.get("template_id")))
+        if None in k or "None" in k:
+            # If any key part missing, just pass it through (won't collide with well-formed rows)
+            # You can also choose to skip these entirely.
+            pass
+        if k in seen:
+            dropped += 1
+            continue  # keep the first one; drop later duplicates
+        seen[k] = r
+    if dropped:
+        logging.info("De-dup: dropped %s duplicate row(s) on (user_id,local_date,template_id)", dropped)
+    return list(seen.values())
 def _discover_table_columns(supabase, table: str) -> Set[str]:
     """Try to discover existing columns by selecting one row."""
     try:
@@ -77,7 +96,7 @@ def upsert_scheduled_tasks(supabase, instances):
     """
     if not instances:
         return (0, 0)
-
+    instances = _dedupe_by_conflict(instances)
     # 🚦 Minimal, safe whitelist for your table
     allowed = {
         "id",            # uuid
@@ -94,7 +113,7 @@ def upsert_scheduled_tasks(supabase, instances):
 
     # ⚠️ Ensure the conflict target columns are present on every row
     for row in clean:
-        missing = [k for k in ("user_id", "local_date", "template_id") if k not in row or row[k] is None]
+        missing = [k for k in ("user_id", "local_date", "template_id") if not row.get(k)]
         if missing:
             raise ValueError(f"Missing required upsert keys on row: {missing}")
 
@@ -490,7 +509,10 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
         raise TypeError("all_new_tasks must be a list of dicts — found a non-dict element")
 
     logging.info("Prepared %s instance(s) for %s", len(all_new_tasks), today.date())
+    all_new_tasks = _dedupe_by_conflict(all_new_tasks)
+    logging.info("Prepared %s instance(s) for %s (post-dedupe)", len(all_new_tasks), today.date())
     return all_new_tasks
+
 
 
 def schedule_day(instances: List[Dict], run_date: date, supabase: Any) -> List[Dict]:
