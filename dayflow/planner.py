@@ -114,8 +114,9 @@ def to_utc_timestamp(local_date_str: str, time_str: str, tz_name: str) -> str:
     return dt_local.astimezone(UTC_TIMEZONE).isoformat()
 
 def _fetch_templates_df(supabase: Any, user_id: str) -> pd.DataFrame:
-    resp = supabase.table("task_templates").select("*").eq("user_id", user_id).eq("is_template", True).execute()
+    resp = supabase.table("task_templates").select("*").eq("user_id", user_id).execute()
     return pd.DataFrame(resp.data or [])
+
 
 def _fetch_old_schedule_df(supabase: Any, user_id: str, today: pd.Timestamp) -> pd.DataFrame:
     """
