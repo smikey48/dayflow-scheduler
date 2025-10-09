@@ -35,6 +35,7 @@ def plan_instances_for_today(templates: List[Dict], run_date: date) -> List[Dict
             "user_id":           t.get("user_id"),
             "title":             t.get("title", "Untitled task"),
             "local_date":        str(run_date),                # keep wall-date for grouping
+            "date":              str(run_date),
             "duration_minutes":  t.get("duration_minutes", 30),
             # IMPORTANT: DB column 'start_time' is TIMESTAMPTZ, so send a UTC timestamp:
             "start_time":        to_utc_timestamp(str(run_date), start_clock, tz_name),
