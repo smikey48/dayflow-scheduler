@@ -692,11 +692,18 @@ def schedule_day(
     # define sorting order
     # higher priority number means lower scheduling priority (scheduled later if overlap)
     # ensure boolean flags exist for sorting
+    # ensure boolean flags exist for sorting (no FutureWarning)
     for flag in ["is_appointment", "is_routine", "is_fixed"]:
         if flag not in prescheduled_df.columns:
             prescheduled_df[flag] = False
         else:
-            prescheduled_df[flag] = prescheduled_df[flag].fillna(False).astype(bool)
+            prescheduled_df[flag] = (
+                prescheduled_df[flag]
+                .astype("boolean")   # pandas nullable bool
+                .fillna(False)
+                .astype(bool)
+            )
+
 
     prescheduled_df = prescheduled_df.sort_values(
         by=['is_appointment', 'is_routine', 'start_time'], # appointments first, then routines, then others, then by start time
@@ -820,6 +827,17 @@ def schedule_day(
 
     # sort floating tasks by priority (highest first = lower priority number)
     # then by duration (shorter first to fit into smaller gaps)
+    # default priority if missing; lower number = higher priority
+    if "priority" not in floating_tasks_only_df.columns:
+        floating_tasks_only_df["priority"] = 3
+
+    # coerce to numeric (ints), fallback to 3
+    floating_tasks_only_df["priority"] = (
+        pd.to_numeric(floating_tasks_only_df["priority"], errors="coerce")
+        .fillna(3)
+        .astype(int)
+    )
+
     floating_tasks_only_df = floating_tasks_only_df.sort_values(
         by=['priority', 'duration_minutes'],
         ascending=[True, True]
