@@ -451,6 +451,8 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
                 "is_scheduled": True,
                 "is_completed": False,
                 "is_deleted": False,
+                "is_routine": False,
+                "is_appointment": False,
                 "is_reschedulable": True,
                 "is_fixed": True,
                 "repeat_unit": repeat_unit,
@@ -689,6 +691,13 @@ def schedule_day(
 
     # define sorting order
     # higher priority number means lower scheduling priority (scheduled later if overlap)
+    # ensure boolean flags exist for sorting
+    for flag in ["is_appointment", "is_routine", "is_fixed"]:
+        if flag not in prescheduled_df.columns:
+            prescheduled_df[flag] = False
+        else:
+            prescheduled_df[flag] = prescheduled_df[flag].fillna(False).astype(bool)
+
     prescheduled_df = prescheduled_df.sort_values(
         by=['is_appointment', 'is_routine', 'start_time'], # appointments first, then routines, then others, then by start time
         ascending=[False, False, True] # appointments=True -> False comes first, routine=True -> False comes first, then start_time ascending
