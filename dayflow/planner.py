@@ -803,7 +803,14 @@ def schedule_day(
 
 
     # filter for floating tasks from the original tasks_df (they were not included in prescheduled_df)
-    floating_tasks_only_df = tasks_df[tasks_df.get('is_floating', False) == True].copy()
+    # ensure 'is_floating' exists and is boolean
+    if 'is_floating' not in tasks_df.columns:
+        tasks_df['is_floating'] = False
+    else:
+        tasks_df['is_floating'] = tasks_df['is_floating'].fillna(False).astype(bool)
+
+    floating_tasks_only_df = tasks_df[tasks_df['is_floating']].copy()
+
     # debugging print
     # print("\nFUNCTION schedule_day - floating_tasks_only_df:\n", floating_tasks_only_df)
 
