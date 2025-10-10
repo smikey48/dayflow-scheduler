@@ -1040,6 +1040,9 @@ def schedule_day(
         print(f"[DRY_RUN] schedule_day would upsert {len(deduped_rows)} row(s); snapshot={snapshot_hash}")
         # Still return the DataFrame as before
         return full_schedule_df
+    # Filter out fields not present in the DB to avoid column errors
+    allowed_cols = _discover_table_columns(supabase, "scheduled_tasks")
+    deduped_rows = [{k: v for k, v in r.items() if k in allowed_cols} for r in deduped_rows]
 
     # Perform upsert with explicit conflict target
     try:
