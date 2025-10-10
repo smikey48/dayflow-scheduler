@@ -988,30 +988,30 @@ def schedule_day(
         if pd.isna(start_ts):
             continue
 
+        # Convert times to UTC ISO strings and build row for actual schema
         start_time_utc_iso = _to_utc_iso(start_ts)
         if not start_time_utc_iso:
             continue
-
+        end_ts = row_dict.get("end_time")
+        end_time_utc_iso = _to_utc_iso(end_ts) if pd.notna(end_ts) else None
+        try:
+            dur = int(row_dict.get("duration_minutes")) if row_dict.get("duration_minutes") is not None else None
+        except Exception:
+            dur = None
         candidate_rows.append({
             "user_id": user_id,
-            "local_date": local_date_str,         # date (local) — canonical
-            "date": local_date_str,               # mirror
+            "local_date": local_date_str,            # wall date (canonical)
+            # DO NOT send "date" (it's a GENERATED column now)
             "template_id": str(template_id),
-            "start_time": start_time_utc_iso,     # timestamptz (UTC)
-            "title": _safe_title(row_dict),       # avoid 'None' in logs
-            "payload": {
-                "source": "schedule_day",
-                "id": row_dict.get("id"),
-                "is_floating": bool(row_dict.get("is_floating", False)),
-                "priority": row_dict.get("priority"),
-                "duration_minutes": row_dict.get("duration_minutes"),
-                "is_appointment": bool(row_dict.get("is_appointment", False)),
-                "is_routine": bool(row_dict.get("is_routine", False)),
-                "is_fixed": bool(row_dict.get("is_fixed", False)),
-                "origin_template_id": row_dict.get("origin_template_id"),
-            },
-            "status": "scheduled",
+            "title": _safe_title(row_dict),
+            # times in UTC (timestamptz)
+            "start_time": start_time_utc_iso,
+            "end_time": end_time_utc_iso,
+            # columns that exist in your table
+            "duration_minutes": dur,
+            "timezone": os.getenv("TZ", "Europe/London"),
         })
+
 
     # Early exit if nothing to write
     if not candidate_rows:
@@ -1044,17 +1044,30 @@ def schedule_day(
     allowed_cols = _discover_table_columns(supabase, "scheduled_tasks")
     deduped_rows = [{k: v for k, v in r.items() if k in allowed_cols} for r in deduped_rows]
 
+    # Filter to only real table columns and avoid GENERATED columns like "date"
+    allowed_cols = _discover_table_columns(supabase, "scheduled_tasks")
+    generated_cols = {"date"}
+    filtered_rows = [
+        {k: v for k, v in r.items() if (k in allowed_cols and k not in generated_cols)}
+        for r in deduped_rows
+    ]
+    if not filtered_rows:
+        print("schedule_day: nothing to upsert after column filtering.")
+        return full_schedule_df
+
     # Perform upsert with explicit conflict target
     try:
         result = (
             supabase.table("scheduled_tasks")
             .upsert(
-                deduped_rows,
+                filtered_rows,
                 on_conflict="user_id,local_date,template_id",
                 ignore_duplicates=False
             )
             .execute()
         )
+
+        
         upserted = len(result.data or [])
         print(f"schedule_day upserted={upserted} skipped_existing={len(candidate_rows) - len(deduped_rows)} total_candidates={len(candidate_rows)}")
     except Exception as e:
