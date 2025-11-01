@@ -28,4 +28,5 @@ RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
 # Start the runner
-CMD ["python", "-m", "dayflow.scheduler_main"]
+CMD ["python", "-m", "dayflow.scheduler_main", "--force"]
+
