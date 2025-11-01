@@ -867,6 +867,22 @@ def schedule_day(
         from zoneinfo import ZoneInfo
         utc_tz = ZoneInfo("UTC")
 
+    # NEW: coerce day_start/day_end to tz-aware pandas Timestamps in LOCAL tz
+    import pandas as pd
+    def _as_local_ts(x):
+        ts = pd.to_datetime(x)
+        try:
+            has_tz = ts.tz is not None
+        except Exception:
+            has_tz = getattr(ts, "tzinfo", None) is not None
+        if not has_tz:
+            return ts.tz_localize(tz)
+        return ts.tz_convert(tz)
+
+    day_start = _as_local_ts(day_start)
+    day_end   = _as_local_ts(day_end)
+
+
     
 
     def _hash_snapshot(rows):
@@ -1216,55 +1232,70 @@ def schedule_day(
     # debugging print
     # print("\nFUNCTION schedule_day - floating_tasks_only_df sorted for scheduling:\n", floating_tasks_only_df)
     def _allowed_range_for_task(day_start_ts, day_end_ts, task_row):
-            """
-            Return (allowed_start, allowed_end) as tz-aware pandas Timestamps in LOCAL tz.
-            If no window set, returns the full [day_start_ts, day_end_ts).
-            """
-            import pandas as pd
-            ws = task_row.get('window_start_local')
-            we = task_row.get('window_end_local')
-            if ws is None or we is None or (isinstance(ws, float) and pd.isna(ws)) or (isinstance(we, float) and pd.isna(we)):
-                return day_start_ts, day_end_ts
+        """
+        Return (allowed_start, allowed_end) as tz-aware pandas Timestamps in LOCAL tz.
+        Accepts naive/aware datetime or pandas Timestamp for day_start_ts/day_end_ts.
+        """
+        import pandas as pd
 
-            # Convert to time-of-day if strings or datetime.time
-            def _to_time(x):
-                if x is None:
-                    return None
-                if isinstance(x, str):
-                    # Accept 'HH:MM' or 'HH:MM:SS'
-                    try:
-                        return pd.to_datetime(x).time()
-                    except Exception:
-                        return None
-                # Already a time object?
-                try:
-                    from datetime import time as _t
-                    if isinstance(x, _t):
-                        return x
-                except Exception:
-                    pass
-                # Timestamps coming from pandas may stringify; last resort:
-                try:
-                    return pd.to_datetime(str(x)).time()
-                except Exception:
-                    return None
-
-            ws_t = _to_time(ws)
-            we_t = _to_time(we)
-            if ws_t is None or we_t is None:
-                return day_start_ts, day_end_ts
-
-            base = day_start_ts.normalize()
+        # Ensure LOCAL tz-aware pandas Timestamps
+        def _as_local_ts(x):
+            ts = pd.to_datetime(x)
             try:
-                ws_dt = pd.Timestamp.combine(base, ws_t).tz_localize(day_start_ts.tz, nonexistent="shift_forward", ambiguous="NaT")
-                we_dt = pd.Timestamp.combine(base, we_t).tz_localize(day_start_ts.tz, nonexistent="shift_forward", ambiguous="NaT")
+                has_tz = ts.tz is not None
             except Exception:
-                return day_start_ts, day_end_ts
+                has_tz = getattr(ts, "tzinfo", None) is not None
+            if not has_tz:
+                return ts.tz_localize(tz)
+            return ts.tz_convert(tz)
 
-            # Clamp to the day's bounds
-            allowed_start = max(day_start_ts, ws_dt)
-            allowed_end   = min(day_end_ts, we_dt)
-            return allowed_start, allowed_end
+        day_start_local = _as_local_ts(day_start_ts)
+        day_end_local   = _as_local_ts(day_end_ts)
+
+        ws = task_row.get('window_start_local')
+        we = task_row.get('window_end_local')
+
+        # No window → full day
+        if ws is None or we is None or (isinstance(ws, float) and pd.isna(ws)) or (isinstance(we, float) and pd.isna(we)):
+            return day_start_local, day_end_local
+
+        # Convert to time-of-day
+        def _to_time(x):
+            if x is None:
+                return None
+            if isinstance(x, str):
+                try:
+                    return pd.to_datetime(x).time()
+                except Exception:
+                    return None
+            try:
+                from datetime import time as _t
+                if isinstance(x, _t):
+                    return x
+            except Exception:
+                pass
+            try:
+                return pd.to_datetime(str(x)).time()
+            except Exception:
+                return None
+
+        ws_t = _to_time(ws)
+        we_t = _to_time(we)
+        if ws_t is None or we_t is None:
+            return day_start_local, day_end_local
+
+        base = day_start_local.normalize()
+        try:
+            ws_dt = pd.Timestamp.combine(base, ws_t).tz_localize(day_start_local.tz, nonexistent="shift_forward", ambiguous="NaT")
+            we_dt = pd.Timestamp.combine(base, we_t).tz_localize(day_start_local.tz, nonexistent="shift_forward", ambiguous="NaT")
+        except Exception:
+            return day_start_local, day_end_local
+
+        # Clamp to the day
+        allowed_start = max(day_start_local, ws_dt)
+        allowed_end   = min(day_end_local, we_dt)
+        return allowed_start, allowed_end
+
 
 
     # schedule floating tasks into free gaps
