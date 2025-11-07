@@ -12,6 +12,31 @@ from typing import Set
 from typing import Tuple, Dict as TDict, List as TList
 # ... existing imports and helpers ...
 
+def archive_delete_for_user_day(sb, user_id: str, run_date) -> int:
+    """
+    Archives and deletes all scheduled_tasks for a given user and date
+    using the Supabase RPC 'archive_then_delete_scheduled_tasks_by_ids'.
+    """
+    # 1) Fetch all matching ids
+    resp = archive_delete_for_user_day(sb, user_id, run_date)
+
+
+    ids = [row["id"] for row in (resp.data or [])]
+    if not ids:
+        print(f"[planner] no scheduled tasks to archive for {run_date}")
+        return 0
+
+    # 2) Archive + delete via RPC
+    result = sb.rpc("archive_then_delete_scheduled_tasks_by_ids", {"ids": ids}).execute()
+    deleted_count = result.data if isinstance(result.data, int) else 0
+
+    if deleted_count != len(ids):
+        print(f"[warn] archived {deleted_count} of {len(ids)} for {run_date}")
+    else:
+        print(f"[planner] archived and deleted {deleted_count} scheduled task(s) for {run_date}")
+
+    return deleted_count
+
 def _normalize_priority(value):
     """Default to 3 if missing/None/not an int; clamp to 1..5."""
     try:
@@ -427,6 +452,45 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
     old_schedule_df["is_template"]  = old_schedule_df["is_template"].fillna(False).astype(bool)
     old_schedule_df["is_completed"] = old_schedule_df["is_completed"].fillna(False).astype(bool)
     old_schedule_df["is_deleted"]   = old_schedule_df["is_deleted"].fillna(False).astype(bool)
+
+    # --- Block one-off templates that were already used on a different day ---
+    # We allow same-day rebuilds: exclude only if the template appears in live/archive
+    # with local_date <> today.
+    try:
+        today_str = str(today.date())
+
+        used_live = supabase.table("scheduled_tasks") \
+            .select("template_id, local_date") \
+            .eq("user_id", user_id) \
+            .neq("local_date", today_str) \
+            .execute()
+        used_arch = supabase.table("scheduled_tasks_archive") \
+            .select("template_id, local_date") \
+            .eq("user_id", user_id) \
+            .neq("local_date", today_str) \
+            .execute()
+
+        used_other_ids = {row["template_id"] for row in (used_live.data or []) if row.get("template_id")}
+        used_other_ids |= {row["template_id"] for row in (used_arch.data or []) if row.get("template_id")}
+
+        # Normalize types for comparison
+        tasks_df["id"] = tasks_df["id"].astype(str)
+        one_off_mask = tasks_df["repeat_unit"].astype(str).str.lower().eq("none")
+        used_mask = tasks_df["id"].isin(used_other_ids)
+
+        # 🔎 NEW: log the exact one-offs we’re about to block
+        to_block = tasks_df.loc[one_off_mask & used_mask, ["id", "title", "repeat_unit"]].copy()
+        if not to_block.empty:
+            logging.info("One-off block list (template_id,title,repeat_unit): %s", to_block.to_dict(orient="records"))
+        
+        blocked = (one_off_mask & used_mask)
+        blocked_count = int(blocked.sum())
+        if blocked_count:
+            logging.info("Excluding %d one-off template(s) already used on a different day", blocked_count)
+            tasks_df = tasks_df.loc[~blocked].copy()
+    except Exception:
+        logging.exception("Failed to exclude reused one-off templates; proceeding without this guard")
+
 
     # remove duplicates by origin_template_id + date (precautionary)
     if "origin_template_id" in old_schedule_df.columns and "date" in old_schedule_df.columns:
@@ -1389,8 +1453,16 @@ def schedule_day(
         print("\n" + "="*60)
         print(f"{len(unscheduled_tasks)} floating tasks could not be scheduled today:")
         for task in unscheduled_tasks:
-            print(f" - {task['task']} (Priority {task.get('priority', '?')}, Duration {task.get('duration_minutes', '?')} min)")
+            # Series.get works like dict.get; prefer 'title', then 'task', then a fallback
+            name = task.get("title", None)
+            if not name or (isinstance(name, str) and not name.strip()):
+                name = task.get("task", None)
+            if not name or (isinstance(name, str) and not name.strip()):
+                name = f"Template {task.get('origin_template_id') or task.get('template_id') or task.get('id') or 'unknown'}"
+
+            print(f" - {name} (Priority {task.get('priority', '?')}, Duration {task.get('duration_minutes', '?')} min)")
         print("="*60 + "\n")
+
 
     # In cron/non-interactive environments we do not pause for input.
     # if unscheduled_tasks:
