@@ -1,0 +1,23 @@
+
+[Scheduler Env Preflight]
+  SUPABASE_URL: https:àe.co
+  SUPABASE_SERVICE_ROLE_KEY: sb_secàKSTL
+  SUPABASE_SERVICE_KEY:      eyJhbGàSxCc
+[Env OK]
+
+2025-10-27 13:46:19,512 INFO DayFlow scheduler starting (tz=Europe/London, dry_run=False [effective=False], force=True, write=False)
+2025-10-27 13:46:20,422 INFO Supabase client created.
+2025-10-27 13:46:20,422 INFO Run date = 2025-10-27 (Europe/London local)
+2025-10-27 13:46:21,523 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/task_templates?select=%2A&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39 "HTTP/2 200 OK"
+2025-10-27 13:46:21,526 INFO templates: fetched 1 row(s) for user_id=3c877140-9539-47b9-898a-45eeab392e39
+2025-10-27 13:46:21,526 INFO templates: columns=['id', 'user_id', 'title', 'description', 'kind', 'repeat', 'repeat_day', 'suggested_duration_minutes', 'origin_source', 'created_at', 'updated_at', 'active', 'repeat_interval', 'repeat_days', 'day_of_month', 'timezone', 'repeat_unit', 'start_time', 'duration_minutes', 'is_routine', 'is_fixed', 'is_appointment', 'notes', 'date']
+2025-10-27 13:46:21,540 INFO templates: preview (up to 5)=[{'id': 'ef0b3b8f-6a41-46c3-942a-c495d1c9c738', 'title': 'another test appointment', 'repeat_unit': 'none', 'repeat': 'none', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'start_time': '19:00:00', 'duration_minutes': 55, 'is_appointment': True, 'is_fixed': True, 'is_routine': False, 'timezone': 'Europe/London', 'date': '2025-10-27'}]
+2025-10-27 13:46:21,738 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=%2A&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&local_date=in.%282025-10-26%2C2025-10-27%29 "HTTP/2 200 OK"
+2025-10-27 13:46:21,748 INFO Instantiation report: none
+2025-10-27 13:46:21,748 INFO Skip report (1): [{'template_id': 'ef0b3b8f-6a41-46c3-942a-c495d1c9c738', 'title': 'another test appointment', 'reason': 'unsupported repeat_unit=none'}]
+2025-10-27 13:46:21,748 INFO Skip summary: {'unsupported repeat_unit=none': 1}
+2025-10-27 13:46:21,749 INFO Prepared 0 instance(s) for 2025-10-27
+2025-10-27 13:46:21,749 INFO Prepared 0 instance(s) for 2025-10-27 (post-dedupe)
+2025-10-27 13:46:21,749 INFO Preprocessed 0 instance(s).
+2025-10-27 13:46:21,750 INFO schedule_day: received empty tasks_df; nothing to schedule.
+2025-10-27 13:46:21,750 INFO Scheduled 0 item(s).
