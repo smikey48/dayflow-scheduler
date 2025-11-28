@@ -1,0 +1,85 @@
+== PROJECT ROOT ==
+
+Path
+----
+C:\Projects\dayflow-ui\dayflow2-gui
+
+
+== FILES OF INTEREST ==
+C:\Projects\dayflow-ui\dayflow2-gui\app\page.tsx
+C:\Projects\dayflow-ui\dayflow2-gui\app\components\GenerateAndGoToday.tsx
+C:\Projects\dayflow-ui\dayflow2-gui\app\components\VoiceUploader.tsx
+C:\Projects\dayflow-ui\dayflow2-gui\app\today\page.tsx
+C:\Projects\dayflow-ui\dayflow2-gui\lib\supabase.ts
+C:\Projects\dayflow-ui\dayflow2-gui\supabase\client.ts
+
+== SUPABASE LIB CONTENTS ==
+---- lib/supabase.ts ----
+// lib/supabase.ts  (BROWSER client for React components)
+import { createClient } from '@supabase/supabase-js';
+
+const loggingFetch: typeof fetch = async (input, init) => {
+  const url = typeof input === 'string' ? input : input.toString();
+  const started = performance.now();
+  try {
+    const res = await fetch(input as any, init);
+    const ms = (performance.now() - started).toFixed(1);
+
+    // Basic line for all Supabase calls
+    console.debug('[SB]', init?.method || 'GET', url, res.status, `${ms}ms`);
+
+    // Extra detail for scheduled_tasks calls: small response preview
+    if (url.includes('/rest/v1/scheduled_tasks')) {
+      try {
+        const clone = res.clone();
+        const text = await clone.text();
+        console.debug('[SB][scheduled_tasks] response preview:', text.slice(0, 400));
+      } catch {
+        // ignore preview errors
+      }
+    }
+    return res;
+  } catch (e) {
+    const ms = (performance.now() - started).toFixed(1);
+    console.debug('[SB][ERROR]', init?.method || 'GET', url, `${ms}ms`, e);
+    throw e;
+  }
+};
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    global: { fetch: loggingFetch }, // ← inject our logger
+  }
+);
+
+
+
+---- supabase/client.ts ----
+// dayflow2-gui/supabase/client.ts
+'use client';
+import { createClient } from '@supabase/supabase-js';
+
+export const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { persistSession: true, autoRefreshToken: true } }
+);
+
+== WHERE 'supabaseBrowser' IS IMPORTED ==
+
+Path
+----                                            
+C:\Projects\dayflow-ui\dayflow2-gui\app\compone…
+C:\Projects\dayflow-ui\dayflow2-gui\app\compone…
+C:\Projects\dayflow-ui\dayflow2-gui\app\compone…
+C:\Projects\dayflow-ui\dayflow2-gui\app\compone…
+C:\Projects\dayflow-ui\dayflow2-gui\lib\supabas…
+
+
+
+== WHERE '@/lib/supabase' IS IMPORTED ==
+
+
+== TODAY LOAD CALLS (scheduled_tasks queries) ==

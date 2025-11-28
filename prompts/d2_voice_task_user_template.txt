@@ -1,0 +1,9 @@
+TRANSCRIPT:
+{spoken_text}
+
+CONTEXT:
+- Today (Europe/London): {yyyy-mm-dd}
+- User ID: {uuid}
+
+TASK:
+Produce exactly one JSON object per the system schema and rules, filling sensible defaults when needed. Do not include any explanation outside the JSON.
