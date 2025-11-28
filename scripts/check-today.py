@@ -3,10 +3,15 @@ import os
 import sys
 sys.path.append('C:\\Projects\\dayflow-scheduler')
 
-os.environ['SUPABASE_URL'] = 'https://prloxvewcsxaptzgxvyy.supabase.co'
-os.environ['SUPABASE_SERVICE_KEY'] = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBybG94dmV3Y3N4YXB0emd4dnl5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcyNjkxODU4MCwiZXhwIjoyMDQyNDk0NTgwfQ.IH4e6IB-S2rp_AwT0xH2YAJ7l7aZ4HU0YIJcJhySxCc'
+# Load from environment variables (set in .env or system environment)
+supabase_url = os.environ.get('SUPABASE_URL')
+supabase_key = os.environ.get('SUPABASE_SERVICE_KEY') or os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
 
-sb = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_KEY'])
+if not supabase_url or not supabase_key:
+    print("ERROR: Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables")
+    sys.exit(1)
+
+sb = create_client(supabase_url, supabase_key)
 
 print("=== TODAY'S TASKS (2025-11-16) ===")
 tasks = sb.table('scheduled_tasks').select('title,is_completed,is_deleted,start_time,template_id').eq('local_date', '2025-11-16').execute()
