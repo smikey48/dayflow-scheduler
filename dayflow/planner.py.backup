@@ -1366,9 +1366,6 @@ def schedule_day(
     
     scheduled_floating_tasks_list = []
 
-    # Track all scheduled tasks (fixed + floating) to prevent overlaps
-    all_scheduled_tasks = schedule_df_fixed.to_dict('records') if not schedule_df_fixed.empty else []
-
     for _, task in floating_tasks_only_df.iterrows():
         # skip tasks with invalid duration
         if task['duration_minutes'] <= 0:
@@ -1399,20 +1396,6 @@ def schedule_day(
                 # schedule the task at the start of the effective gap
                 start_time = eff_start
                 end_time = start_time + duration
-
-                # Check for overlap with ALL scheduled tasks (fixed + floating)
-                has_overlap = False
-                for scheduled in all_scheduled_tasks:
-                    sched_start = scheduled['start_time']
-                    sched_end = scheduled['end_time']
-                    # Check if [start_time, end_time) overlaps with [sched_start, sched_end)
-                    if not (end_time <= sched_start or start_time >= sched_end):
-                        has_overlap = True
-                        break
-                
-                if has_overlap:
-                    # Skip this gap, try next one
-                    continue
 
                 # normalize + clamp priority (1 = highest)
                 p = task.get('priority', 3)
@@ -1448,12 +1431,6 @@ def schedule_day(
                     # keep window for debug/inspection (optional)
                     "window_start_local": task.get("window_start_local"),
                     "window_end_local": task.get("window_end_local"),
-                })
-                
-                # Add to all_scheduled_tasks to prevent future overlaps
-                all_scheduled_tasks.append({
-                    'start_time': start_time,
-                    'end_time': end_time
                 })
 
                 # update the gap (relative to original gap limits)
