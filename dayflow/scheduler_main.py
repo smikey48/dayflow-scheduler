@@ -445,7 +445,13 @@ def main() -> int:
                         len(deleted_template_ids), before, after)
 
     # 2) Day bounds (07:00–22:00 local)
-    day_start = datetime.combine(run_date, time(8, 0), tzinfo=LONDON)
+    now_time = datetime.now(LONDON)
+    if args.force and now_time.date() == run_date and now_time.time() > time(8, 0):
+        # When forcing a reschedule during the day, start from current time
+        day_start = now_time
+        logging.info("Force mode: starting schedule from current time %s", day_start.strftime("%H:%M"))
+    else:
+        day_start = datetime.combine(run_date, time(8, 0), tzinfo=LONDON)
     day_end = datetime.combine(run_date, time(23, 0), tzinfo=LONDON)
 
     # 3) Build DataFrame for the scheduler
