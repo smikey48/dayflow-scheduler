@@ -1,6 +1,6 @@
 # dayflow/planner.py
 from datetime import date
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import logging
 import os
 from datetime import datetime
@@ -12,28 +12,27 @@ from typing import Set
 from typing import Tuple, Dict as TDict, List as TList
 # ... existing imports and helpers ...
 
-def archive_delete_for_user_day(sb, user_id: str, run_date) -> int:
+def archive_delete_for_user_day(sb, user_id: str, run_date, day_start=None) -> int:
     """
-    Archives and deletes all scheduled_tasks for a given user and date
-    using the Supabase RPC 'archive_then_delete_scheduled_tasks_by_ids'.
+    Deletes scheduled_tasks for a given user and date that are NOT completed.
+    Preserves ALL completed tasks so they remain in the user's history for "Completed Today" 
+    and won't be re-scheduled (they're filtered out during preprocessing).
+    Skip archiving since reschedule can happen multiple times a day causing duplicate key errors.
     """
-    # 1) Fetch all matching ids
-    resp = archive_delete_for_user_day(sb, user_id, run_date)
+    # 1) Fetch ids of tasks that are NOT completed (we keep ALL completed tasks)
+    resp = sb.table("scheduled_tasks").select("id").eq("user_id", user_id).eq("local_date", str(run_date)).eq("is_completed", False).execute()
 
-
-    ids = [row["id"] for row in (resp.data or [])]
-    if not ids:
-        print(f"[planner] no scheduled tasks to archive for {run_date}")
+    ids_to_delete = [row["id"] for row in (resp.data or [])]
+    
+    if not ids_to_delete:
+        print(f"[planner] no tasks to delete for {run_date}")
         return 0
 
-    # 2) Archive + delete via RPC
-    result = sb.rpc("archive_then_delete_scheduled_tasks_by_ids", {"ids": ids}).execute()
-    deleted_count = result.data if isinstance(result.data, int) else 0
+    # 2) Delete directly without archiving (avoids duplicate key errors on repeated reschedules)
+    result = sb.table("scheduled_tasks").delete().in_("id", ids_to_delete).execute()
+    deleted_count = len(result.data) if result.data else 0
 
-    if deleted_count != len(ids):
-        print(f"[warn] archived {deleted_count} of {len(ids)} for {run_date}")
-    else:
-        print(f"[planner] archived and deleted {deleted_count} scheduled task(s) for {run_date}")
+    print(f"[planner] deleted {deleted_count} incomplete task(s) for {run_date}")
 
     return deleted_count
 
@@ -52,20 +51,25 @@ def _normalize_priority(value):
 def _dedupe_by_conflict(rows: TList[dict]) -> TList[dict]:
     """Remove duplicates that would share the same (user_id, local_date, template_id)."""
     seen: TDict[Tuple[str,str,str], dict] = {}
+    result = []
     dropped = 0
     for r in rows:
-        k = (str(r.get("user_id")), str(r.get("local_date")), str(r.get("template_id")))
-        if None in k or "None" in k:
-            # If any key part missing, just pass it through (won't collide with well-formed rows)
-            # You can also choose to skip these entirely.
-            pass
+        template_id = r.get("template_id")
+        # Only deduplicate rows with a valid template_id
+        # Rows without template_id (None or empty) are kept as-is
+        if not template_id or template_id == "None":
+            result.append(r)
+            continue
+            
+        k = (str(r.get("user_id")), str(r.get("local_date")), str(template_id))
         if k in seen:
             dropped += 1
             continue  # keep the first one; drop later duplicates
         seen[k] = r
+        result.append(r)
     if dropped:
         logging.info("De-dup: dropped %s duplicate row(s) on (user_id,local_date,template_id)", dropped)
-    return list(seen.values())
+    return result
 def _discover_table_columns(supabase, table: str) -> Set[str]:
     """Try to discover existing columns by selecting one row."""
     try:
@@ -104,7 +108,7 @@ def to_utc_timestamp(local_date_str: str, time_str: str, tz_name: str) -> str:
 
 def get_templates_for_user(supabase: Any, user_id: str) -> List[Dict]:
     """Fetch task_templates for one user. Adjust the selected columns as needed."""
-    resp = supabase.table("task_templates").select("*").eq("user_id", user_id).execute()
+    resp = supabase.table("task_templates").select("*").eq("user_id", user_id).eq("is_deleted", False).execute()
     data = resp.data or []
     logging.info("Fetched %s template(s) for user %s", len(data), user_id)
     return data
@@ -235,7 +239,7 @@ def to_utc_timestamp(local_date_str: str, time_str: str, tz_name: str) -> str:
     return dt_local.astimezone(UTC_TIMEZONE).isoformat()
 
 def _fetch_templates_df(supabase: Any, user_id: str) -> pd.DataFrame:
-    resp = supabase.table("task_templates").select("*").eq("user_id", user_id).execute()
+    resp = supabase.table("task_templates").select("*").eq("user_id", user_id).eq("is_deleted", False).execute()
     df = pd.DataFrame(resp.data or [])
     # 🔎 Debug: show how many templates we actually got and a small preview
     try:
@@ -271,7 +275,10 @@ def _fetch_old_schedule_df(supabase: Any, user_id: str, today: pd.Timestamp) -> 
     # Pull rows for yesterday and today (plus any others if you prefer)
     resp = supabase.table("scheduled_tasks").select("*").eq("user_id", user_id) \
         .in_("local_date", [yday_str, today_str]).execute()
+    logging.info("Fetched %d rows from scheduled_tasks for dates %s, %s", len(resp.data or []), yday_str, today_str)
     df = pd.DataFrame(resp.data or [])
+    if not df.empty and 'title' in df.columns:
+        logging.info("Fetched titles: %s", df['title'].tolist()[:10])
 
     # Ensure expected columns exist
     for col, default in [
@@ -358,18 +365,19 @@ def _name_for_log(row_or_task) -> str:
     name = (get("task") or get("title") or "").strip()
     return name if name else f"Template {get('id') or get('template_id') or 'unknown'}"
 
-def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
+def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[str] = None) -> List[Dict]:
     """
     Adapter version of your original function:
     - loads templates + "old schedule" from Supabase
     - follows your rules to decide what to instantiate / carry forward
     - returns a list of instance dicts for upsert into scheduled_tasks
 
-    NOTE: We run for exactly one user (TEST_USER_ID) during this phase, as agreed.
+    NOTE: If user_id not provided, falls back to TEST_USER_ID environment variable.
     """
-    user_id = os.getenv("TEST_USER_ID")
     if not user_id:
-        logging.warning("TEST_USER_ID not set; nothing to do.")
+        user_id = os.getenv("TEST_USER_ID")
+    if not user_id:
+        logging.warning("No user_id provided and TEST_USER_ID not set; nothing to do.")
         return []
 
     # create the Timestamp for today (local midnight)
@@ -388,6 +396,8 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
 
     # old_schedule_df == prior instances from Supabase (yesterday + today)
     old_schedule_df = _fetch_old_schedule_df(supabase, user_id, today)
+    if not old_schedule_df.empty:
+        logging.info("Old schedule preview: %s", old_schedule_df[['title', 'is_completed', 'date']].head().to_dict('records') if 'title' in old_schedule_df.columns else "no title column")
     # ---- Make both DataFrames resilient to missing columns ----
     def _ensure_cols(df: pd.DataFrame, defaults: dict):
         for col, default in defaults.items():
@@ -493,11 +503,24 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
 
 
     # remove duplicates by origin_template_id + date (precautionary)
+    # BUT only deduplicate rows that actually HAVE an origin_template_id (not NULL)
     if "origin_template_id" in old_schedule_df.columns and "date" in old_schedule_df.columns:
-        old_schedule_df = (
-            old_schedule_df.sort_values(old_schedule_df.columns[0])  # arbitrary stable sort
-                             .drop_duplicates(subset=["origin_template_id", "date"], keep="first")
-        )
+        before_dedup = len(old_schedule_df)
+        # Only deduplicate rows where origin_template_id is not null
+        has_origin = old_schedule_df["origin_template_id"].notna()
+        if has_origin.any():
+            rows_with_origin = old_schedule_df[has_origin].copy()
+            rows_without_origin = old_schedule_df[~has_origin].copy()
+            
+            # Deduplicate only the rows with origin_template_id
+            rows_with_origin = rows_with_origin.sort_values(rows_with_origin.columns[0]).drop_duplicates(subset=["origin_template_id", "date"], keep="first")
+            
+            # Recombine
+            old_schedule_df = pd.concat([rows_with_origin, rows_without_origin], ignore_index=True)
+        
+        after_dedup = len(old_schedule_df)
+        if before_dedup != after_dedup:
+            logging.info("Dropped %d duplicate rows by origin_template_id+date (kept only first of each)", before_dedup - after_dedup)
 
     # normalize repeat_unit from legacy 'repeat' field
     if "repeat" in tasks_df.columns:
@@ -510,15 +533,46 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
     generated_tasks: List[Dict] = []
 
     # build list of template IDs that have already been completed today
-    completed_today_template_ids = old_schedule_df[
+    # Use template_id (primary field) and fallback to origin_template_id
+    logging.info("Old schedule shape: %s, checking for completed tasks today (%s)", old_schedule_df.shape, today.date())
+    
+    # Debug: show completed status
+    if not old_schedule_df.empty and 'is_completed' in old_schedule_df.columns:
+        completed_count = old_schedule_df['is_completed'].fillna(False).astype(bool).sum()
+        logging.info("Old schedule has %d tasks marked as completed (any date)", completed_count)
+    
+    completed_today_mask = (
         (~old_schedule_df["is_template"].fillna(False).astype(bool)) &
         (old_schedule_df["is_completed"].fillna(False).astype(bool)) &
         (pd.to_datetime(old_schedule_df["date"]).dt.date == today.date())
-    ]["origin_template_id"].dropna().astype(str).unique().tolist()
+    )
+    logging.info("Found %d completed tasks specifically today in old_schedule_df", completed_today_mask.sum())
+    
+    completed_today_template_ids = set()
+    if completed_today_mask.any():
+        # Try template_id first (primary field in scheduled_tasks)
+        if "template_id" in old_schedule_df.columns:
+            completed_today_template_ids.update(
+                old_schedule_df[completed_today_mask]["template_id"].dropna().astype(str).unique()
+            )
+        # Also check origin_template_id as fallback
+        if "origin_template_id" in old_schedule_df.columns:
+            completed_today_template_ids.update(
+                old_schedule_df[completed_today_mask]["origin_template_id"].dropna().astype(str).unique()
+            )
+    
+    completed_today_template_ids = list(completed_today_template_ids)
+    
+    if completed_today_template_ids:
+        logging.info("Completed today template IDs: %s", completed_today_template_ids)
 
     # filter out any templates from tasks_df that match those IDs
-    if not tasks_df.empty:
+    if not tasks_df.empty and completed_today_template_ids:
+        before_count = len(tasks_df)
         tasks_df = tasks_df[~tasks_df["id"].astype(str).isin(completed_today_template_ids)]
+        after_count = len(tasks_df)
+        if before_count != after_count:
+            logging.info("Filtered out %d completed template(s) from today's schedule", before_count - after_count)
 
         # patch origin_template_id for completed tasks missing it (name-based)
     if not tasks_df.empty and not old_schedule_df.empty:
@@ -857,24 +911,37 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any) -> List[Dict]:
                         carry_forward_tasks.append(d)
 
     # existing today tasks still active (retain)
+    # NOTE: Include ALL non-completed, non-deleted scheduled tasks from today
+    # regardless of whether their template was completed or not
     existing_today_tasks = pd.DataFrame()
     if not old_schedule_df.empty:
         existing_today_tasks = old_schedule_df[
             (~old_schedule_df["is_template"].fillna(False).astype(bool)) &
             (pd.to_datetime(old_schedule_df["date"]).dt.date == today.date()) &
             (~old_schedule_df["is_completed"].fillna(False).astype(bool)) &
-            (~old_schedule_df["is_deleted"].fillna(False).astype(bool)) &
-            (old_schedule_df.get("origin_template_id").isin(tasks_df["id"].astype(str)) if not tasks_df.empty else False)
+            (~old_schedule_df["is_deleted"].fillna(False).astype(bool))
         ]
+        
+        # Enrich existing tasks with window information from their templates
+        if not existing_today_tasks.empty and not tasks_df.empty:
+            for idx, task in existing_today_tasks.iterrows():
+                tid = task.get("template_id") or task.get("origin_template_id")
+                if tid and tid in tasks_df["id"].values:
+                    template = tasks_df[tasks_df["id"] == tid].iloc[0]
+                    # Copy window fields from template if not already present
+                    if pd.isna(task.get("window_start_local")) and not pd.isna(template.get("window_start_local")):
+                        existing_today_tasks.at[idx, "window_start_local"] = template.get("window_start_local")
+                    if pd.isna(task.get("window_end_local")) and not pd.isna(template.get("window_end_local")):
+                        existing_today_tasks.at[idx, "window_end_local"] = template.get("window_end_local")
 
     # completed recurring tasks from today — must be retained in the schedule (for Done list)
+    # NOTE: Include ALL completed tasks from today regardless of template status
     completed_today_tasks = pd.DataFrame()
     if not old_schedule_df.empty:
         completed_today_tasks = old_schedule_df[
             (~old_schedule_df["is_template"].fillna(False).astype(bool)) &
             (pd.to_datetime(old_schedule_df["date"]).dt.date == today.date()) &
-            (old_schedule_df["is_completed"].fillna(False).astype(bool)) &
-            (old_schedule_df.get("origin_template_id").isin(tasks_df["id"].astype(str)) if not tasks_df.empty else False)
+            (old_schedule_df["is_completed"].fillna(False).astype(bool))
         ]
 
     # combine: newly generated + already active from today + carried-forward + completed tasks
@@ -985,7 +1052,15 @@ def schedule_day(
     def _row_template_id(row):
         # Prefer origin_template_id -> template_id -> id
         tid = row.get("origin_template_id") or row.get("template_id") or row.get("id")
-        return str(tid) if tid is not None else None
+        if tid is None:
+            return None
+        # Check for pandas NaN
+        try:
+            if pd.isna(tid):
+                return None
+        except (TypeError, ValueError):
+            pass
+        return str(tid)
 
     def _to_utc_iso(ts):
         # Ensure tz-aware, convert to UTC, ISO string
@@ -1013,6 +1088,16 @@ def schedule_day(
 
     tasks_df = tasks_df[tasks_df.get("is_template", False) != True].copy()
     print(f"Filtered out {num_templates} template task(s).")
+    
+    # Filter out completed tasks - they should not be rescheduled
+    if "is_completed" in tasks_df.columns:
+        completed_mask = tasks_df["is_completed"].fillna(False).astype(bool)
+        num_completed = completed_mask.sum()
+        tasks_df = tasks_df[~completed_mask].copy()
+        if num_completed > 0:
+            print(f"Filtered out {num_completed} completed task(s) from scheduling.")
+    
+    print(f"[DEBUG] tasks_df after template filter: {len(tasks_df)} tasks")
     # Ensure key columns exist even for floating tasks (which may have no times yet).
     for col, default in [
         ("start_time", pd.NaT),
@@ -1192,8 +1277,12 @@ def schedule_day(
                 # else:
                 #     print(f"Skipping '{task_name}'.")
 
-        elif task_dict.get('is_routine') or task_dict.get('is_fixed'):
-             # routines and other fixed tasks can be moved if they overlap or start before day_start
+        elif task_dict.get('is_fixed'):
+             # Fixed tasks (non-routine) cannot be moved past their scheduled time - skip if time has passed
+             if task_dict['start_time'] < day_start:
+                 print(f"Skipping past fixed task '{task_dict.get('task', 'Unnamed')}' (was scheduled for {task_dict['start_time'].strftime('%H:%M')})")
+                 continue
+             
              # attempt to place at original start_time or the start of the day, whichever is later
              initial_attempt_start = max(day_start, task_dict['start_time'])
 
@@ -1204,7 +1293,23 @@ def schedule_day(
                  task_dict['end_time'] = new_end_time
                  final_schedule_list.append(task_dict)
              else:
-                 print(f"Could not schedule fixed/routine task '{task_dict.get('task', 'Unnamed')}' within day bounds due to conflicts.")
+                 print(f"Could not schedule fixed task '{task_dict.get('task', 'Unnamed')}' within day bounds due to conflicts.")
+        
+        elif task_dict.get('is_routine'):
+             # Routines can be moved to later in the day if their original time has passed
+             # attempt to place at original start_time or current time, whichever is later
+             initial_attempt_start = max(day_start, task_dict['start_time'])
+
+             new_start_time, new_end_time = find_next_free_slot(initial_attempt_start, duration, final_schedule_list)
+
+             if new_start_time is not None:
+                 if new_start_time > task_dict['start_time']:
+                     print(f"Routine '{task_dict.get('task', 'Unnamed')}' moved from {task_dict['start_time'].strftime('%H:%M')} to {new_start_time.strftime('%H:%M')}")
+                 task_dict['start_time'] = new_start_time
+                 task_dict['end_time'] = new_end_time
+                 final_schedule_list.append(task_dict)
+             else:
+                 print(f"Could not schedule routine task '{task_dict.get('task', 'Unnamed')}' within day bounds due to conflicts.")
 
 
     # sort the scheduled fixed tasks by start time
@@ -1239,7 +1344,9 @@ def schedule_day(
             free_gaps_list.append((current_time_for_gap, day_end))
 
     # debugging print
-    # print("\nFUNCTION schedule_day - free_gaps_list before floating task scheduling:\n", free_gaps_list)
+    print("\n[DEBUG] free_gaps_list before floating task scheduling:")
+    for gap_start, gap_end in free_gaps_list:
+        print(f"  Gap: {gap_start.strftime('%H:%M')} - {gap_end.strftime('%H:%M')}")
 
 
     # filter for floating tasks from the original tasks_df (they were not included in prescheduled_df)
@@ -1249,6 +1356,13 @@ def schedule_day(
         tasks_df['is_floating'] = False
     else:
         tasks_df['is_floating'] = tasks_df['is_floating'].fillna(False).astype(bool)
+    
+    # Infer is_floating from other flags: if not appointment/routine/fixed, it's floating
+    is_appt = tasks_df.get('is_appointment', pd.Series([False] * len(tasks_df))).fillna(False).astype(bool)
+    is_rout = tasks_df.get('is_routine', pd.Series([False] * len(tasks_df))).fillna(False).astype(bool)
+    is_fix = tasks_df.get('is_fixed', pd.Series([False] * len(tasks_df))).fillna(False).astype(bool)
+    inferred_floating = ~(is_appt | is_rout | is_fix)
+    tasks_df['is_floating'] = tasks_df['is_floating'] | inferred_floating
     if 'window_start_local' not in tasks_df.columns:
         tasks_df['window_start_local'] = None
     if 'window_end_local' not in tasks_df.columns:
@@ -1267,7 +1381,8 @@ def schedule_day(
 
     floating_tasks_only_df = tasks_df[tasks_df['is_floating']].copy()
 
-
+    print(f"[DEBUG] floating_tasks_only_df: {len(floating_tasks_only_df)} tasks")
+    print(f"[DEBUG] prescheduled_df: {len(prescheduled_df)} tasks")
     # debugging print
     # print("\nFUNCTION schedule_day - floating_tasks_only_df:\n", floating_tasks_only_df)
 
@@ -1294,6 +1409,12 @@ def schedule_day(
     ).copy()
 
     # debugging print
+    print("[DEBUG] Floating task scheduling order:")
+    for _, task in floating_tasks_only_df.iterrows():
+        task_name = task.get('title') or task.get('task', 'Unnamed')
+        priority = task.get('priority', '?')
+        duration = task.get('duration_minutes', '?')
+        print(f"  - {task_name}: priority={priority}, duration={duration}min")
     # print("\nFUNCTION schedule_day - floating_tasks_only_df sorted for scheduling:\n", floating_tasks_only_df)
     def _allowed_range_for_task(day_start_ts, day_end_ts, task_row):
         """
@@ -1365,6 +1486,9 @@ def schedule_day(
     # schedule floating tasks into free gaps
     
     scheduled_floating_tasks_list = []
+    
+    # Build list of all scheduled tasks for overlap checking
+    all_scheduled = schedule_df_fixed[['start_time', 'end_time']].to_dict('records') if not schedule_df_fixed.empty else []
 
     for _, task in floating_tasks_only_df.iterrows():
         # skip tasks with invalid duration
@@ -1377,6 +1501,8 @@ def schedule_day(
 
         # NEW: compute allowed window for this task (in LOCAL tz)
         allowed_start, allowed_end = _allowed_range_for_task(day_start, day_end, task)
+        task_title = task.get('title', task.get('task', 'Unnamed'))
+        print(f"[DEBUG] Task '{task_title}' window: {allowed_start.strftime('%H:%M')}-{allowed_end.strftime('%H:%M')}, has window_start={task.get('window_start_local')}, window_end={task.get('window_end_local')}")
         if allowed_end <= allowed_start:
             print(f"Window excludes placement today: '{task.get('task', task.get('title', 'Unnamed'))}' "
                   f"[{allowed_start.strftime('%H:%M')}–{allowed_end.strftime('%H:%M')}]")
@@ -1393,9 +1519,16 @@ def schedule_day(
             eff_end   = min(gap_end, allowed_end)
 
             if (eff_end - eff_start) >= duration:
-                # schedule the task at the start of the effective gap
-                start_time = eff_start
-                end_time = start_time + duration
+                # Find next free slot within this effective gap
+                task_title = task.get('title', task.get('task', 'Unnamed'))
+                print(f"[DEBUG] Trying to fit '{task_title}' ({task['duration_minutes']}min) in gap {gap_start.strftime('%H:%M')}-{gap_end.strftime('%H:%M')}, eff: {eff_start.strftime('%H:%M')}-{eff_end.strftime('%H:%M')}")
+                start_time, end_time = find_next_free_slot(eff_start, duration, all_scheduled)
+                print(f"[DEBUG] Result: {start_time.strftime('%H:%M') if start_time else 'None'} - {end_time.strftime('%H:%M') if end_time else 'None'}")
+                
+                # Check if slot is within the effective gap bounds
+                if start_time is None or end_time is None or end_time > eff_end:
+                    print(f"[DEBUG] Rejected: end_time {end_time.strftime('%H:%M') if end_time else 'None'} > eff_end {eff_end.strftime('%H:%M')}")
+                    continue  # No room in this gap, try next
 
                 # normalize + clamp priority (1 = highest)
                 p = task.get('priority', 3)
@@ -1432,6 +1565,9 @@ def schedule_day(
                     "window_start_local": task.get("window_start_local"),
                     "window_end_local": task.get("window_end_local"),
                 })
+                
+                # Add to all_scheduled to prevent future overlaps
+                all_scheduled.append({'start_time': start_time, 'end_time': end_time})
 
                 # update the gap (relative to original gap limits)
                 new_gap_start = end_time
@@ -1523,12 +1659,25 @@ def schedule_day(
     local_date_str = local_date.isoformat()
 
     # Build candidate rows from the computed schedule
+    # Separate existing tasks (with id but no/invalid template_id) from new tasks
     candidate_rows = []
+    existing_task_updates = []
+    
     for _, row in full_schedule_df.iterrows():
         row_dict = row.to_dict()
         template_id = _row_template_id(row_dict)
+        row_id = row_dict.get("id")
+        has_existing_id = row_id and not pd.isna(row_id)
+        
+        # Check if this is an existing task (has id but template_id is None or doesn't match a template)
+        # Existing tasks need to be updated by id, not upserted by template_id
+        if has_existing_id and (template_id is None or template_id == str(row_id)):
+            # This is an existing scheduled task - handle separately
+            existing_task_updates.append((str(row_id), row_dict))
+            continue
+        
         if template_id is None:
-            # If we cannot identify a template_id, skip — conflict key depends on it.
+            # No template_id and not an existing task - skip
             continue
 
         # Whitelist filter (if provided)
@@ -1626,8 +1775,23 @@ def schedule_day(
     except Exception:
         pass
 
-    # Perform upsert with explicit conflict target
-    print(f"schedule_day: WRITING {len(filtered_rows)} row(s) to scheduled_tasks for {local_date_str}")
+    # DELETE existing tasks for this date before upserting new schedule
+    # BUT: preserve tasks that we're about to update (those in existing_task_updates)
+    print(f"schedule_day: DELETING old tasks for {local_date_str}")
+    if existing_task_updates:
+        # Get IDs of tasks to preserve
+        preserve_ids = [task_id for task_id, _ in existing_task_updates]
+        resp = supabase.table("scheduled_tasks").select("id").eq("user_id", user_id).eq("local_date", str(local_date)).eq("is_completed", False).execute()
+        ids_to_delete = [row["id"] for row in (resp.data or []) if row["id"] not in preserve_ids]
+        if ids_to_delete:
+            supabase.table("scheduled_tasks").delete().in_("id", ids_to_delete).execute()
+        deleted_count = len(ids_to_delete)
+    else:
+        deleted_count = archive_delete_for_user_day(supabase, user_id, local_date, day_start=day_start)
+    print(f"schedule_day: Deleted {deleted_count} old task(s)")
+
+    # Perform upsert with explicit conflict target for NEW tasks
+    print(f"schedule_day: WRITING {len(filtered_rows)} new task(s) to scheduled_tasks for {local_date_str}")
 
     try:
         result = (
@@ -1648,6 +1812,76 @@ def schedule_day(
             f"attempted={len(candidate_rows)} "
             f"conflict_target=user_id,local_date,template_id"
         )
+        
+        # Update existing tasks by their id
+        if existing_task_updates:
+            print(f"schedule_day: UPDATING {len(existing_task_updates)} existing task(s)")
+            for task_id, row_dict in existing_task_updates:
+                start_ts = row_dict.get("start_time")
+                start_time_utc_iso = _to_utc_iso(start_ts)
+                if not start_time_utc_iso:
+                    continue
+                end_ts = row_dict.get("end_time")
+                end_time_utc_iso = _to_utc_iso(end_ts) if pd.notna(end_ts) else None
+                try:
+                    dur = int(row_dict.get("duration_minutes")) if row_dict.get("duration_minutes") is not None else None
+                except Exception:
+                    dur = None
+                
+                update_data = {
+                    "start_time": start_time_utc_iso,
+                    "end_time": end_time_utc_iso,
+                    "duration_minutes": dur,
+                    "priority": _normalize_priority(row_dict.get("priority")),
+                }
+                # Remove None values
+                update_data = {k: v for k, v in update_data.items() if v is not None}
+                
+                if update_data:
+                    supabase.table("scheduled_tasks").update(update_data).eq("id", task_id).execute()
+        
+        # Write unscheduled tasks to database so UI can display them with explanations
+        if unscheduled_tasks:
+            unscheduled_rows = []
+            for task in unscheduled_tasks:
+                template_id = _row_template_id(task.to_dict() if hasattr(task, 'to_dict') else task)
+                if not template_id:
+                    continue
+                    
+                # Calculate window for explanation
+                allowed_start, allowed_end = _allowed_range_for_task(day_start, day_end, task)
+                explanation = f"No available time slot within window [{allowed_start.strftime('%H:%M')}–{allowed_end.strftime('%H:%M')}]"
+                
+                name = task.get("title") or task.get("task", "Unnamed")
+                duration = task.get("duration_minutes", 0)
+                
+                unscheduled_rows.append({
+                    "user_id": user_id,
+                    "local_date": local_date_str,
+                    "template_id": str(template_id),
+                    "title": name,
+                    "start_time": None,
+                    "end_time": None,
+                    "duration_minutes": int(duration) if duration else None,
+                    "timezone": os.getenv("TZ", "Europe/London"),
+                    "is_appointment": False,
+                    "is_routine": False,
+                    "is_fixed": False,
+                    "is_scheduled": False,  # Mark as not scheduled
+                    "description": explanation,  # Store explanation
+                    "priority": _normalize_priority(task.get("priority")),
+                })
+            
+            if unscheduled_rows:
+                filtered_unscheduled = [{k: v for k, v in r.items() if k in allowed_cols} for r in unscheduled_rows]
+                filtered_unscheduled = [_json_sanitize(r) for r in filtered_unscheduled]
+                
+                print(f"schedule_day: WRITING {len(filtered_unscheduled)} unscheduled task(s) with explanations")
+                supabase.table("scheduled_tasks").upsert(
+                    filtered_unscheduled,
+                    on_conflict="user_id,local_date,template_id",
+                    ignore_duplicates=False
+                ).execute()
 
     except Exception as e:
         err_msg = getattr(e, "message", None) or str(e)

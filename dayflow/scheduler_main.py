@@ -411,7 +411,7 @@ def main() -> int:
 
     # --- Orchestration ---
     # 1) Expand templates into instances for run_date
-    instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb)
+    instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb, user_id=args.user)
     count_instances = len(instances) if hasattr(instances, "__len__") else None
     logging.info("Preprocessed %s instance(s).", count_instances if count_instances is not None else "unknown")
 
@@ -432,7 +432,11 @@ def main() -> int:
                         len(deleted_today_ids), before, after)
     # 1c) **NEW**: Exclude any instances whose template is soft-deleted (DB truth)
     if sb is not None:
-        del_resp = sb.table("task_templates").select("id").eq("is_deleted", True).execute()
+        del_q = sb.table("task_templates").select("id").eq("is_deleted", True)
+        # Filter by user to avoid removing tasks from other users with deleted templates
+        if args.user:
+            del_q = del_q.eq("user_id", args.user)
+        del_resp = del_q.execute()
         deleted_template_ids = {r["id"] for r in (del_resp.data or [])}
         if deleted_template_ids:
             before = len(instances) if hasattr(instances, "__len__") else 0
@@ -445,7 +449,13 @@ def main() -> int:
                         len(deleted_template_ids), before, after)
 
     # 2) Day bounds (07:00–22:00 local)
-    day_start = datetime.combine(run_date, time(8, 0), tzinfo=LONDON)
+    now_time = datetime.now(LONDON)
+    if args.force and now_time.date() == run_date and now_time.time() > time(8, 0):
+        # When forcing a reschedule during the day, start from current time
+        day_start = now_time
+        logging.info("Force mode: starting schedule from current time %s", day_start.strftime("%H:%M"))
+    else:
+        day_start = datetime.combine(run_date, time(8, 0), tzinfo=LONDON)
     day_end = datetime.combine(run_date, time(23, 0), tzinfo=LONDON)
 
     # 3) Build DataFrame for the scheduler
