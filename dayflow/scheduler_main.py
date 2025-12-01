@@ -98,9 +98,14 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
         print("[carry_forward] Nothing to insert.")
         return 0
 
-    ins_resp = supabase.table("scheduled_tasks").insert(to_insert).execute()
+    # Use upsert to avoid duplicate key errors if task already exists
+    ins_resp = (
+        supabase.table("scheduled_tasks")
+        .upsert(to_insert, on_conflict="user_id,local_date,template_id")
+        .execute()
+    )
     count = len(ins_resp.data or [])
-    print(f"[carry_forward] Inserted {count} carried-forward tasks for {today}.")
+    print(f"[carry_forward] Upserted {count} carried-forward tasks for {today}.")
     return count
 
 
