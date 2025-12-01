@@ -716,6 +716,37 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
         repeat_interval = int(task.get("repeat_interval", 1) or 1)
 
         date_raw = task.get("date")
+        # For recurring monthly tasks with interval > 1 and no specific date, 
+        # use last_completed_date if available to calculate proper intervals
+        if pd.isna(date_raw) and repeat_unit == "monthly" and repeat_interval > 1:
+            last_completed = task.get("last_completed_date")
+            if pd.notna(last_completed):
+                date_raw = last_completed
+            else:
+                # No completion history - for monthly tasks with day_of_month,
+                # use the most recent occurrence of that day BEFORE today as reference
+                day_of_month_val = task.get("day_of_month")
+                if pd.notna(day_of_month_val):
+                    try:
+                        target_day = int(day_of_month_val)
+                        # Find the most recent occurrence of this day
+                        if today.day >= target_day:
+                            # This month's occurrence has passed or is today
+                            ref_month = today.month
+                            ref_year = today.year
+                        else:
+                            # This month's occurrence hasn't happened yet, use last month
+                            ref_month = today.month - 1 if today.month > 1 else 12
+                            ref_year = today.year if today.month > 1 else today.year - 1
+                        
+                        # Create reference date for that day
+                        import calendar
+                        max_day = calendar.monthrange(ref_year, ref_month)[1]
+                        actual_day = min(target_day, max_day)
+                        date_raw = f"{ref_year}-{ref_month:02d}-{actual_day:02d}"
+                    except Exception:
+                        pass
+        
         reference_date = today if pd.isna(date_raw) else pd.to_datetime(date_raw, errors='coerce')
         reason = None  # will capture why we decided to instantiate
 
