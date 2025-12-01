@@ -350,11 +350,10 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     });
 
     const combinedData = [...(data || []), ...missingAppointments];
-    const combinedData = [...(data || []), ...missingAppointments];
 
     // Debug: Check for duplicate tasks with same template_id
-    const templateCounts = new Map<string, number>();
-    combinedData.forEach((task: any) => {
+    const templateCounts = new Map();
+    combinedData.forEach((task) => {
       if (task.template_id) {
         const count = templateCounts.get(task.template_id) || 0;
         templateCounts.set(task.template_id, count + 1);
@@ -363,8 +362,8 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     const duplicates = Array.from(templateCounts.entries()).filter(([_, count]) => count > 1);
     if (duplicates.length > 0) {
       console.warn('[loadToday] Found duplicate tasks:', duplicates.map(([id, count]) => {
-        const tasks = combinedData.filter((t: any) => t.template_id === id);
-        return { template_id: id, count, tasks: tasks.map((t: any) => ({ 
+        const tasks = combinedData.filter((t) => t.template_id === id);
+        return { template_id: id, count, tasks: tasks.map((t) => ({ 
           id: t.id, 
           title: t.title, 
           is_completed: t.is_completed,
@@ -374,6 +373,7 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     }
 
     // Belt-and-braces client-side sort (in case PostgREST ordering gets bypassed)
+    const sorted = combinedData.slice().sort((a: any, b: any) => {
       const at = a.start_time, bt = b.start_time;
       
       if (at && bt) {
