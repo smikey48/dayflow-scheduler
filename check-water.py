@@ -6,7 +6,7 @@ load_dotenv('.env.local')
 
 sb = create_client(
     os.getenv('NEXT_PUBLIC_SUPABASE_URL'),
-    os.getenv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+    os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_SERVICE_KEY')
 )
 
 result = sb.table('scheduled_tasks').select(
