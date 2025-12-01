@@ -1640,13 +1640,28 @@ def schedule_day(
                 # Add to all_scheduled to prevent future overlaps
                 all_scheduled.append({'start_time': start_time, 'end_time': end_time})
 
-                # update the gap (relative to original gap limits)
-                new_gap_start = end_time
-                # Important: adjust only within the original gap bounds
-                if new_gap_start < gap_end:
-                    free_gaps_list[gap_idx] = (new_gap_start, gap_end)
-                else:
-                    free_gaps_list.pop(gap_idx)
+                # update the gap - split it if we scheduled in the middle
+                # If task was placed at the start of the gap, just shift gap start forward
+                # If task was placed in the middle, split into two gaps
+                gap_before = None
+                gap_after = None
+                
+                if start_time > gap_start:
+                    # There's space before the scheduled task
+                    gap_before = (gap_start, start_time)
+                
+                if end_time < gap_end:
+                    # There's space after the scheduled task
+                    gap_after = (end_time, gap_end)
+                
+                # Replace the current gap with the new gap(s)
+                free_gaps_list.pop(gap_idx)
+                if gap_before:
+                    free_gaps_list.insert(gap_idx, gap_before)
+                    if gap_after:
+                        free_gaps_list.insert(gap_idx + 1, gap_after)
+                elif gap_after:
+                    free_gaps_list.insert(gap_idx, gap_after)
                 assigned = True
                 break  # move to next floating task
 
