@@ -429,7 +429,10 @@ export function QuickAdd({ userId, onAdded }: Props) {
             />
             {repeat !== 'none' && repeatInterval > 1 && (
               <p className="text-xs text-gray-600 mt-1">
-                Sets when the interval starts. E.g., every 2 weeks from Nov 10 → Nov 10, 24, Dec 8...
+                {repeat === 'monthly' 
+                  ? `Sets when the interval starts. E.g., every ${repeatInterval} month${repeatInterval > 1 ? 's' : ''} from this date. For "Read meters" every 3 months on the 1st starting Oct 1 → due Jan 1, Apr 1, Jul 1...`
+                  : `Sets when the interval starts. E.g., every ${repeatInterval} ${repeat === 'weekly' ? 'week' : 'day'}${repeatInterval > 1 ? 's' : ''} from this date → due on interval dates...`
+                }
               </p>
             )}
           </div>
