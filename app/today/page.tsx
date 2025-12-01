@@ -202,11 +202,11 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     }
     console.log(`[loadToday] Fetched ${data?.length || 0} scheduled tasks`);
 
-    // Also fetch ALL scheduled_tasks (including deleted AND completed) to check which templates are already instantiated
-    // This prevents recreating appointments that were moved/deleted/completed by the user
+    // Also fetch ALL scheduled_tasks (including deleted) to check which templates are already instantiated
+    // This prevents recreating appointments that were moved/deleted by the user
     const { data: allScheduledTasks, error: allScheduledError } = await supabase
       .from('scheduled_tasks')
-      .select('template_id, is_completed')
+      .select('template_id')
       .eq('local_date', todayLocal);
 
     if (allScheduledError) {
@@ -240,8 +240,7 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
       console.log(`[loadToday] Fetched ${allTemplates?.length || 0} appointment templates`);
     }
 
-    // Find template appointments that don't already exist in scheduled_tasks (including deleted/completed ones)
-    // Don't recreate if ANY instance exists for today (deleted, completed, or active)
+    // Find template appointments that don't already exist in scheduled_tasks (including deleted ones)
     const existingTemplateIds = new Set((allScheduledTasks || []).map((t: any) => t.template_id).filter(Boolean));
     const missingAppointments: any[] = [];
     
@@ -351,10 +350,30 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     });
 
     const combinedData = [...(data || []), ...missingAppointments];
+    const combinedData = [...(data || []), ...missingAppointments];
 
+    // Debug: Check for duplicate tasks with same template_id
+    const templateCounts = new Map<string, number>();
+    combinedData.forEach((task: any) => {
+      if (task.template_id) {
+        const count = templateCounts.get(task.template_id) || 0;
+        templateCounts.set(task.template_id, count + 1);
+      }
+    });
+    const duplicates = Array.from(templateCounts.entries()).filter(([_, count]) => count > 1);
+    if (duplicates.length > 0) {
+      console.warn('[loadToday] Found duplicate tasks:', duplicates.map(([id, count]) => {
+        const tasks = combinedData.filter((t: any) => t.template_id === id);
+        return { template_id: id, count, tasks: tasks.map((t: any) => ({ 
+          id: t.id, 
+          title: t.title, 
+          is_completed: t.is_completed,
+          scheduled_task_id: t.scheduled_task_id 
+        })) };
+      }));
+    }
 
     // Belt-and-braces client-side sort (in case PostgREST ordering gets bypassed)
-    const sorted = combinedData.slice().sort((a: any, b: any) => {
       const at = a.start_time, bt = b.start_time;
       
       if (at && bt) {
