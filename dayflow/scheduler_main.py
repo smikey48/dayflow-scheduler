@@ -52,9 +52,11 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
     t_by_id = {t["id"]: t for t in t_rows}
 
     # 3) Build a set of today's already-present template_ids to avoid dupes for repeats
-    today_resp = supabase.table("scheduled_tasks").select("template_id")\
+    # Also fetch which ones have times to avoid overwriting scheduled tasks
+    today_resp = supabase.table("scheduled_tasks").select("template_id, start_time")\
         .eq("local_date", today).execute()
     todays_templates = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id")}
+    todays_scheduled = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id") and r.get("start_time")}
 
     to_insert: list[dict] = []
     for r in y_rows:
@@ -65,6 +67,10 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
 
         # **Skip** if the template was soft-deleted
         if tmeta.get("is_deleted") is True:
+            continue
+
+        # Skip if already scheduled today with a time (don't overwrite the scheduler's work)
+        if tid in todays_scheduled:
             continue
 
         # Canonicalize repeat: prefer 'repeat' if present
