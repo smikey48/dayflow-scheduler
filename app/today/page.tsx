@@ -202,11 +202,11 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     }
     console.log(`[loadToday] Fetched ${data?.length || 0} scheduled tasks`);
 
-    // Also fetch ALL scheduled_tasks (including deleted) to check which templates are already instantiated
-    // This prevents recreating appointments that were moved/deleted by the user
+    // Also fetch ALL scheduled_tasks (including deleted AND completed) to check which templates are already instantiated
+    // This prevents recreating appointments that were moved/deleted/completed by the user
     const { data: allScheduledTasks, error: allScheduledError } = await supabase
       .from('scheduled_tasks')
-      .select('template_id')
+      .select('template_id, is_completed')
       .eq('local_date', todayLocal);
 
     if (allScheduledError) {
@@ -240,7 +240,8 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
       console.log(`[loadToday] Fetched ${allTemplates?.length || 0} appointment templates`);
     }
 
-    // Find template appointments that don't already exist in scheduled_tasks (including deleted ones)
+    // Find template appointments that don't already exist in scheduled_tasks (including deleted/completed ones)
+    // Don't recreate if ANY instance exists for today (deleted, completed, or active)
     const existingTemplateIds = new Set((allScheduledTasks || []).map((t: any) => t.template_id).filter(Boolean));
     const missingAppointments: any[] = [];
     
