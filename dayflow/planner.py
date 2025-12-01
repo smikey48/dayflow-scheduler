@@ -904,6 +904,46 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
                         # skip if the same task was already regenerated this run
                         if row.get("origin_template_id") in [t.get("origin_template_id") for t in generated_tasks]:
                             continue
+                        
+                        # For monthly/weekly tasks, verify they're actually due today before carrying forward
+                        if repeat_unit in ["weekly", "monthly"]:
+                            ref_date_str = row.get("date")
+                            if ref_date_str:
+                                try:
+                                    ref_date = pd.to_datetime(ref_date_str).date()
+                                    repeat_day = row.get("repeat_day")
+                                    day_of_month = row.get("day_of_month")
+                                    repeat_days = row.get("repeat_days")
+                                    
+                                    if repeat_unit == "monthly":
+                                        months_since = (today.year - ref_date.year) * 12 + (today.month - ref_date.month)
+                                        if months_since % max(1, repeat_interval) != 0:
+                                            print(f"[carry-forward] Skipping '{row.get('title')}': not due this month (months_since={months_since}, interval={repeat_interval})")
+                                            continue
+                                        repeat_day_int = int(day_of_month) if pd.notna(day_of_month) else (int(repeat_day) if repeat_day is not None else None)
+                                        if repeat_day_int is not None and today.day != repeat_day_int:
+                                            print(f"[carry-forward] Skipping '{row.get('title')}': wrong day of month (today={today.day}, needed={repeat_day_int})")
+                                            continue
+                                    elif repeat_unit == "weekly":
+                                        days_since = (today - ref_date).days
+                                        weeks_since = days_since // 7
+                                        if weeks_since % max(1, repeat_interval) != 0:
+                                            print(f"[carry-forward] Skipping '{row.get('title')}': not in a due week")
+                                            continue
+                                        if repeat_days:
+                                            dow = today.weekday()
+                                            if dow not in repeat_days:
+                                                print(f"[carry-forward] Skipping '{row.get('title')}': wrong day of week")
+                                                continue
+                                        elif repeat_day is not None:
+                                            dow = today.weekday()
+                                            if dow != int(repeat_day):
+                                                print(f"[carry-forward] Skipping '{row.get('title')}': wrong day of week")
+                                                continue
+                                except Exception as e:
+                                    print(f"[carry-forward] Error checking '{row.get('title')}': {e}")
+                                    continue
+                        
                         d = dict(row)
                         # set today’s date & keep fields consistent
                         d["local_date"] = str(today.date())
