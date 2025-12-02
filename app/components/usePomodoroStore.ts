@@ -37,6 +37,9 @@ interface PomodoroStore {
   toggleExpanded: () => void;
 }
 
+// Store reference to audio context for cleanup
+let currentAudioContext: AudioContext | null = null;
+
 export const usePomodoroStore = create<PomodoroStore>()(
   persist(
     (set, get) => ({
