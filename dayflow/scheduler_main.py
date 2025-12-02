@@ -421,6 +421,11 @@ def main() -> int:
         logging.info("Whitelist active (%d ids).", len(whitelist_ids))
 
     # --- Orchestration ---
+    # 0) FIRST: Carry forward incomplete tasks from yesterday so they can be scheduled
+    #    This must run BEFORE preprocessing so carried tasks go through the scheduler
+    if sb is not None:
+        carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
+
     # 1) Expand templates into instances for run_date
     instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb, user_id=args.user)
     count_instances = len(instances) if hasattr(instances, "__len__") else None
@@ -485,9 +490,6 @@ def main() -> int:
 
     count_scheduled = len(schedule) if hasattr(schedule, "__len__") else None
     logging.info("Scheduled %s item(s).", count_scheduled if count_scheduled is not None else "unknown")
-    
-    # 5) Carry forward incomplete one-off or eligible repeating floaters
-    carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
 
     return 0
 
