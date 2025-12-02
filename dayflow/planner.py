@@ -1015,12 +1015,42 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
             (old_schedule_df["is_completed"].fillna(False).astype(bool))
         ]
 
-    # combine: newly generated + already active from today + carried-forward + completed tasks
+    # NEW: Fetch tasks from scheduled_tasks that have NO time - these need to be scheduled
+    # This handles carried-forward tasks that were added by carry_forward_incomplete_one_offs
+    unscheduled_tasks = []
+    try:
+        today_str = str(today.date())
+        unscheduled_resp = supabase.table("scheduled_tasks") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("local_date", today_str) \
+            .is_("start_time", "null") \
+            .eq("is_completed", False) \
+            .eq("is_deleted", False) \
+            .execute()
+        
+        if unscheduled_resp.data:
+            logging.info("Found %d unscheduled task(s) that need time slots", len(unscheduled_resp.data))
+            for task in unscheduled_resp.data:
+                # Fetch template details to get window constraints
+                tid = task.get("template_id")
+                if tid and tid in tasks_df["id"].values:
+                    template = tasks_df[tasks_df["id"] == tid].iloc[0]
+                    # Add template fields that are needed for scheduling
+                    task["window_start_local"] = template.get("window_start_local")
+                    task["window_end_local"] = template.get("window_end_local")
+                    task["priority"] = task.get("priority", template.get("priority", 3))
+                unscheduled_tasks.append(task)
+    except Exception as e:
+        logging.warning("Failed to fetch unscheduled tasks: %s", e)
+
+    # combine: newly generated + already active from today + carried-forward + completed tasks + unscheduled
     all_new_tasks: List[Dict] = (
         generated_tasks
         + existing_today_tasks.to_dict(orient="records")
         + carry_forward_tasks
         + completed_today_tasks.to_dict(orient="records")
+        + unscheduled_tasks
     )
 
     # safety: ensure list of dicts
