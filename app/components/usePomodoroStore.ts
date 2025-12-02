@@ -112,22 +112,27 @@ export const usePomodoroStore = create<PomodoroStore>()(
           if (settings.soundEnabled) {
             // Generate a pleasant notification sound using Web Audio API
             try {
-              const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+              // Clean up any existing audio context
+              if (currentAudioContext) {
+                currentAudioContext.close();
+              }
+              
+              currentAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
               
               // Create three beeps with increasing pitch
               [0, 0.15, 0.3].forEach((delay, i) => {
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
+                const oscillator = currentAudioContext!.createOscillator();
+                const gainNode = currentAudioContext!.createGain();
                 
                 oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
+                gainNode.connect(currentAudioContext!.destination);
                 
                 // Pleasant frequencies: C5, E5, G5 (major chord)
                 oscillator.frequency.value = [523.25, 659.25, 783.99][i];
                 oscillator.type = 'sine';
                 
                 // Envelope: quick attack, smooth release
-                const startTime = audioContext.currentTime + delay;
+                const startTime = currentAudioContext!.currentTime + delay;
                 gainNode.gain.setValueAtTime(0, startTime);
                 gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.01);
                 gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.15);
@@ -165,7 +170,14 @@ export const usePomodoroStore = create<PomodoroStore>()(
         set({ settings: { ...settings, ...newSettings } });
       },
       
-      toggleVisibility: () => set((state) => ({ isVisible: !state.isVisible })),
+      toggleVisibility: () => {
+        // Stop any playing audio when hiding the widget
+        if (currentAudioContext) {
+          currentAudioContext.close();
+          currentAudioContext = null;
+        }
+        set((state) => ({ isVisible: !state.isVisible }));
+      },
       
       toggleExpanded: () => set((state) => ({ isExpanded: !state.isExpanded })),
     }),
