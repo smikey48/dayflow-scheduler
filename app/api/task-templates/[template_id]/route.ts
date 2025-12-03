@@ -128,12 +128,12 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    // Convert 'none' to null for database
-    updates.repeat_unit = body.repeat_unit === 'none' ? null : body.repeat_unit;
+    // Convert 'none' to 'daily' with interval=1 for database (repeat_unit has NOT NULL constraint)
+    updates.repeat_unit = body.repeat_unit === 'none' ? 'daily' : body.repeat_unit;
     
     // When changing to one-off (none), clear repeat-related fields
     if (body.repeat_unit === 'none') {
-      updates.repeat_interval = 1;  // Set to 1 for one-off tasks
+      updates.repeat_interval = 1;  // Set to 1 for one-off tasks (daily with interval 1)
       updates.repeat_days = null;    // Clear weekly days
       updates.repeat_day = null;     // Clear monthly day
       updates.date = null;           // Clear reference date
