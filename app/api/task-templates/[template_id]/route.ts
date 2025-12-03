@@ -130,6 +130,14 @@ export async function PATCH(
     }
     // Convert 'none' to null for database
     updates.repeat_unit = body.repeat_unit === 'none' ? null : body.repeat_unit;
+    
+    // When changing to one-off (none), clear repeat-related fields
+    if (body.repeat_unit === 'none') {
+      updates.repeat_interval = 1;  // Set to 1 for one-off tasks
+      updates.repeat_days = null;    // Clear weekly days
+      updates.repeat_day = null;     // Clear monthly day
+      updates.date = null;           // Clear reference date
+    }
   }
 
   if (typeof body.repeat_interval !== "undefined" && body.repeat_interval !== null) {
