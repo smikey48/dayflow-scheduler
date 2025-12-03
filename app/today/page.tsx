@@ -1271,12 +1271,22 @@ async function completeTask(scheduledTaskId: string) {
               const body: any = { 
                 kind: task_type,
                 repeat_unit, 
-                repeat_interval,
-                date: reference_date,
                 priority
               };
-              if (repeat_unit === 'weekly') body.repeat_days = repeat_days;
-              if (repeat_unit === 'monthly') body.day_of_month = day_of_month;
+              
+              // Only include repeat settings if not one-off
+              if (repeat_unit !== 'none') {
+                body.repeat_interval = repeat_interval;
+                body.date = reference_date;
+                if (repeat_unit === 'weekly') body.repeat_days = repeat_days;
+                if (repeat_unit === 'monthly') body.day_of_month = day_of_month;
+              } else {
+                // Explicitly clear repeat fields when changing to one-off
+                body.repeat_interval = 1;
+                body.date = null;
+                body.repeat_days = null;
+                body.day_of_month = null;
+              }
               
               // Add time field for appointments and routines
               if (task_type === 'appointment' || task_type === 'routine') {
