@@ -41,7 +41,7 @@ export default function LoginPage() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/today`,
+            emailRedirectTo: `${window.location.origin}/`,
           }
         });
 
@@ -50,7 +50,7 @@ export default function LoginPage() {
         if (data.user) {
           // If email confirmation is disabled, redirect immediately
           if (data.session) {
-            router.push('/today');
+            router.push('/');
             router.refresh();
           } else {
             setMessage('Check your email for the confirmation link!');
@@ -65,8 +65,8 @@ export default function LoginPage() {
         if (error) throw error;
 
         if (data.session) {
-          // Redirect to today page
-          window.location.href = '/today';
+          // Redirect to landing page
+          window.location.href = '/';
           return;
         } else {
           setError('Login successful but no session created');
