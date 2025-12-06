@@ -1,7 +1,7 @@
-# Auto-push script - Run this in a separate terminal
+# Auto-push script for dayflow-scheduler
 # Usage: .\auto-push.ps1
 
-Write-Host "Auto-push enabled. Watching for changes..." -ForegroundColor Green
+Write-Host "Auto-push enabled for dayflow-scheduler. Watching for changes..." -ForegroundColor Green
 Write-Host "Press Ctrl+C to stop" -ForegroundColor Yellow
 
 while ($true) {
@@ -18,8 +18,18 @@ while ($true) {
         $message = "Auto-commit: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         git commit -m $message
         
-        # Push to GitHub
-        git push origin main
+        # Try to push
+        $pushResult = git push origin main 2>&1
+        
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Push rejected, syncing..." -ForegroundColor Yellow
+            
+            # Pull with strategy to prefer local changes
+            git pull origin main --no-rebase --strategy-option=ours 2>&1 | Out-Null
+            
+            # Try push again
+            git push origin main
+        }
         
         Write-Host "[$(Get-Date -Format 'HH:mm:ss')] Pushed to GitHub" -ForegroundColor Green
     }
