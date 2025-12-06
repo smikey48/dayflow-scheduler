@@ -46,7 +46,7 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
         return 0
 
     t_resp = supabase.table("task_templates").select(
-        "id, is_deleted, repeat_unit, repeat, repeat_interval, repeat_days"
+        "id, is_deleted, repeat_unit, repeat, repeat_interval, repeat_days, priority"
     ).in_("id", template_ids).execute()
     t_rows = t_resp.data or []
     t_by_id = {t["id"]: t for t in t_rows}
@@ -93,7 +93,7 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
             "start_time": None,
             "end_time": None,
             "duration_minutes": r.get("duration_minutes"),
-            "priority": r.get("priority", 3),
+            "priority": tmeta.get("priority", r.get("priority", 3)),
             "is_appointment": False,
             "is_routine": False,
             "is_fixed": r.get("is_fixed", False),
@@ -464,14 +464,21 @@ def main() -> int:
             logging.info("Template-deleted filter: %d template(s) removed (from %d → %d).",
                         len(deleted_template_ids), before, after)
 
-    # 2) Day bounds (07:00–22:00 local)
+    # 2) Day bounds (08:00–23:00 local by default, or current time if force mode and already past 08:00)
     now_time = datetime.now(LONDON)
-    if args.force and now_time.date() == run_date and now_time.time() > time(8, 0):
-        # When forcing a reschedule during the day, start from current time
-        day_start = now_time
-        logging.info("Force mode: starting schedule from current time %s", day_start.strftime("%H:%M"))
+    default_start = datetime.combine(run_date, time(8, 0), tzinfo=LONDON)
+    
+    if args.force and now_time.date() == run_date:
+        # Force mode: start from whichever is later - current time or 08:00
+        if now_time > default_start:
+            day_start = now_time
+            logging.info("Force mode: starting schedule from current time %s", day_start.strftime("%H:%M"))
+        else:
+            day_start = default_start
+            logging.info("Force mode: starting schedule from default start time 08:00 (current time %s is earlier)", now_time.strftime("%H:%M"))
     else:
-        day_start = datetime.combine(run_date, time(8, 0), tzinfo=LONDON)
+        day_start = default_start
+    
     day_end = datetime.combine(run_date, time(23, 0), tzinfo=LONDON)
 
     # 3) Build DataFrame for the scheduler

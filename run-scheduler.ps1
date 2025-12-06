@@ -16,4 +16,4 @@ $logFile = Join-Path $logDir ("scheduler-" + (Get-Date -Format "yyyy-MM-dd") + "
 
 # 5) Resolve Python path and capture ALL output to the log (stdout+stderr)
 $py = (Get-Command python).Source
-& $py -m dayflow.scheduler_main --date today --user $USER_ID 2>&1 | Tee-Object -FilePath $logFile
+& $py -m dayflow.scheduler_main --date today --user $USER_ID --force 2>&1 | Tee-Object -FilePath $logFile

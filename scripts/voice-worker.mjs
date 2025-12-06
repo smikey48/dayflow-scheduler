@@ -159,11 +159,14 @@ async function processOne(job) {
   }
 
   const payload = {
-    user_id: DEV_USER_ID,
+    user_id: job.user_id || DEV_USER_ID, // Use job's user_id if available
     transcript, // full text from Whisper or draft
     timezone: "Europe/London", // your canonical timezone
     job_id, // traceability
     storage_path, // helpful metadata
+    // Pass metadata overrides if present
+    duration_override: job.metadata?.duration_override || null,
+    priority_override: job.metadata?.priority_override || null,
   };
 
   // Debug: confirm env keys present (masked)

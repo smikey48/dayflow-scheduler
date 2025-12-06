@@ -241,8 +241,16 @@ export function QuickAdd({ userId, onAdded }: Props) {
 
 
     try {
+      // Verify we have an authenticated user before inserting
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('Not authenticated - please log in again');
+      }
+      
       const payload = buildTemplatePayload();
-      console.log('QuickAdd insert payload:', JSON.stringify(payload, null, 2));
+      // Ensure user_id matches the authenticated user
+      payload.user_id = user.id;
+      
       const { error } = await supabase.from('task_templates').insert(payload);
       if (error) throw error;
 

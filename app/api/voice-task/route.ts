@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     // Get authenticated user
     const userId = await getAuthenticatedUserId(req);
     
-    const { transcript } = await req.json();
+    const { transcript, duration_override, priority_override } = await req.json();
     if (!transcript) {
       return NextResponse.json(
         { error: "Provide JSON body with { transcript }" },
@@ -147,6 +147,17 @@ export async function POST(req: NextRequest) {
     if (kind === "floating" && (!duration_minutes || duration_minutes <= 0)) {
       duration_minutes = 25;
     }
+    
+    // Override duration if specified (e.g., from quick-note)
+    if (duration_override && typeof duration_override === 'number' && duration_override > 0) {
+      duration_minutes = duration_override;
+    }
+    
+    // Override priority if specified (e.g., from quick-note)
+    let priority = task.priority ?? 3;
+    if (priority_override && typeof priority_override === 'number' && priority_override >= 1 && priority_override <= 5) {
+      priority = priority_override;
+    }
 
     // Helper: "HH:MM" → "HH:MM:00" for TIME WITHOUT TZ columns
     const toTime = (hhmm: string | null) => (hhmm ? `${hhmm}:00` : null);
@@ -189,8 +200,8 @@ export async function POST(req: NextRequest) {
       notes: (task.notes ?? "").trim() || null,
       description: (task.confidence_notes ?? "").trim() || null,
       
-      // priority (1-5, default 3)
-      priority: task.priority ?? 3,
+      // priority (1-5, with override support)
+      priority: priority,
     };
 
     console.log(

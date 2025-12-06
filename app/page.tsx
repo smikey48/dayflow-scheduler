@@ -10,6 +10,7 @@ import { ThemeSupa } from '@supabase/auth-ui-shared';
 
 import Recorder from "./components/voice/Recorder";
 import Calendar from "./components/Calendar";
+import DailyAdhdTip from "./components/DailyAdhdTip";
 
 // ---- Supabase client (module scope) ----
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -185,6 +186,11 @@ export default function Home() {
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Your intelligent scheduling assistant. Choose where you'd like to start:
           </p>
+        </div>
+
+        {/* Daily ADHD Tip */}
+        <div className="max-w-3xl mx-auto mb-8">
+          <DailyAdhdTip />
         </div>
 
         {/* Navigation Cards */}

@@ -544,7 +544,7 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
     completed_today_mask = (
         (~old_schedule_df["is_template"].fillna(False).astype(bool)) &
         (old_schedule_df["is_completed"].fillna(False).astype(bool)) &
-        (pd.to_datetime(old_schedule_df["date"]).dt.date == today.date())
+        (pd.to_datetime(old_schedule_df["local_date"]).dt.date == today.date())
     )
     logging.info("Found %d completed tasks specifically today in old_schedule_df", completed_today_mask.sum())
     
@@ -979,6 +979,13 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
                         # set today’s date & keep fields consistent
                         d["local_date"] = str(today.date())
                         d["date"] = str(today.date())
+                        # Update priority from template if available
+                        tid = row.get("template_id") or row.get("origin_template_id")
+                        if tid and tid in tasks_df["id"].values:
+                            template = tasks_df[tasks_df["id"] == tid].iloc[0]
+                            template_priority = template.get("priority")
+                            if not pd.isna(template_priority):
+                                d["priority"] = template_priority
                         carry_forward_tasks.append(d)
 
     # existing today tasks still active (retain)
@@ -993,7 +1000,7 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
             (~old_schedule_df["is_deleted"].fillna(False).astype(bool))
         ]
         
-        # Enrich existing tasks with window information from their templates
+        # Enrich existing tasks with window information and priority from their templates
         if not existing_today_tasks.empty and not tasks_df.empty:
             for idx, task in existing_today_tasks.iterrows():
                 tid = task.get("template_id") or task.get("origin_template_id")
@@ -1004,6 +1011,9 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
                         existing_today_tasks.at[idx, "window_start_local"] = template.get("window_start_local")
                     if pd.isna(task.get("window_end_local")) and not pd.isna(template.get("window_end_local")):
                         existing_today_tasks.at[idx, "window_end_local"] = template.get("window_end_local")
+                    # Always use template priority (current value, not snapshot)
+                    if not pd.isna(template.get("priority")):
+                        existing_today_tasks.at[idx, "priority"] = template.get("priority")
 
     # completed recurring tasks from today — must be retained in the schedule (for Done list)
     # NOTE: Include ALL completed tasks from today regardless of template status
@@ -1039,7 +1049,7 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
                     # Add template fields that are needed for scheduling
                     task["window_start_local"] = template.get("window_start_local")
                     task["window_end_local"] = template.get("window_end_local")
-                    task["priority"] = task.get("priority", template.get("priority", 3))
+                    task["priority"] = template.get("priority", task.get("priority", 3))
                 unscheduled_tasks.append(task)
     except Exception as e:
         logging.warning("Failed to fetch unscheduled tasks: %s", e)

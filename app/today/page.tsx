@@ -94,6 +94,7 @@ type Row = {
   scheduled_task_id: string;
   template_id: string  | null;
   title: string;
+  description?: string | null;
   notes: string | null;
   is_appointment: boolean;
   is_fixed: boolean;
@@ -158,46 +159,74 @@ const [editModalDuration, setEditModalDuration] = useState<number>(30);
     }
   }, [editingTask]);
 
+  // ⬇️ Run scheduler to recreate today's schedule
+  async function runScheduler() {
+    try {
+      const supabase = supabaseBrowser();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        console.warn('[runScheduler] No auth token, skipping scheduler call');
+        return false;
+      }
+      
+      console.log('[runScheduler] Calling /api/revise-schedule...');
+      const response = await fetch('/api/revise-schedule', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('[runScheduler] Failed:', errorData);
+        return false;
+      }
+      
+      const result = await response.json();
+      console.log('[runScheduler] Success:', result);
+      return true;
+    } catch (error) {
+      console.error('[runScheduler] Error:', error);
+      return false;
+    }
+  }
+
   // ⬇️ factor out loader so we can reuse it after deletes
   async function loadToday() {
-const supabase = supabaseBrowser();
+    try {
+      const supabase = supabaseBrowser();
 
-// Get today's date in Europe/London timezone (YYYY-MM-DD format)
-const todayLocal = new Intl.DateTimeFormat('en-CA', { 
-  timeZone: 'Europe/London',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit'
-}).format(new Date());
+      // Get today's date in Europe/London timezone (YYYY-MM-DD format)
+      const todayLocal = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'Europe/London',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
 
-console.log(`[loadToday] Starting fetch for ${todayLocal}`);
+      console.log(`[loadToday] Starting fetch for ${todayLocal}`);
 
-    // Fetch scheduled tasks for today
-    const { data, error } = await supabase
+      // Fetch scheduled tasks for today
+      const { data, error } = await supabase
       .from('scheduled_tasks')
       .select(`
         id, template_id, title, description, is_appointment, is_fixed, is_routine, 
         start_time, end_time, duration_minutes, is_completed, priority,
         task_templates!template_id (
           title, description, repeat, repeat_unit, repeat_interval, repeat_day, repeat_days, day_of_month, date,
-          window_start_local, window_end_local
+          window_start_local, window_end_local, priority
         )
       `)
       .eq('local_date', todayLocal)
-      .eq('is_deleted', false);    if (error) {
-      console.error('[loadToday] scheduled_tasks query failed:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-        timestamp: new Date().toISOString()
-      });
-      setError(JSON.stringify({
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code
-      }, null, 2));
+      .eq('is_deleted', false);
+      
+    if (error) {
+      console.error('[loadToday] scheduled_tasks query failed:', error);
+      console.error('[loadToday] Full error object:', JSON.stringify(error, null, 2));
+      setError(`Database error: ${error.message || 'Unknown error'}\n\nDetails: ${JSON.stringify(error, null, 2)}`);
       return;
     }
     console.log(`[loadToday] Fetched ${data?.length || 0} scheduled tasks`);
@@ -414,6 +443,8 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
         description: template.description || row.description,
         // Use 'description' from DB (scheduler writes failure reasons there)
         notes: row.description || null,
+        // Prefer template priority (always current) over scheduled_tasks (denormalized snapshot)
+        priority: template.priority ?? row.priority,
         // Flatten repeat fields from joined task_templates
         repeat_unit: template.repeat_unit || null,
         repeat_interval: template.repeat_interval || null,
@@ -426,6 +457,10 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     });
     setRows(mapped as Row[]);
 
+    } catch (err: any) {
+      console.error('[loadToday] Unexpected error:', err);
+      setError(`Unexpected error: ${err.message || String(err)}`);
+    }
   }
 
   // ⬇️ Skip task to tomorrow by moving it forward one day
@@ -574,6 +609,63 @@ console.log(`[loadToday] Starting fetch for ${todayLocal}`);
     await loadToday();
   }
 
+  // ⬇️ mark a task series as completed (complete current + delete template)
+  async function completeSeries(scheduledTaskId: string) {
+    const supabase = supabaseBrowser();
+    
+    console.log(`[completeSeries] Starting series completion for task: ${scheduledTaskId}`);
+    
+    // First complete the current instance
+    await completeTask(scheduledTaskId);
+    
+    // Then soft-delete the template to prevent future instances
+    if (scheduledTaskId.startsWith('template-')) {
+      // Extract template ID
+      const templateId = scheduledTaskId.replace('template-', '');
+      
+      const { error: templateError } = await supabase
+        .from('task_templates')
+        .update({ is_deleted: true })
+        .eq('id', templateId);
+
+      if (templateError) {
+        console.error('Failed to delete template:', templateError);
+        setError(`Failed to complete series: ${templateError.message}`);
+        return;
+      }
+    } else {
+      // Get the template_id from the scheduled task
+      const { data: task, error: fetchError } = await supabase
+        .from('scheduled_tasks')
+        .select('template_id')
+        .eq('id', scheduledTaskId)
+        .single();
+
+      if (fetchError) {
+        console.error('Failed to fetch task:', fetchError);
+        setError(`Failed to fetch task: ${fetchError.message}`);
+        return;
+      }
+
+      // Soft-delete the template if it exists
+      if (task?.template_id) {
+        const { error: templateError } = await supabase
+          .from('task_templates')
+          .update({ is_deleted: true })
+          .eq('id', task.template_id);
+
+        if (templateError) {
+          console.error('Failed to delete template:', templateError);
+          setError(`Failed to complete series: ${templateError.message}`);
+          return;
+        }
+      }
+    }
+    
+    console.log(`[completeSeries] Successfully completed series for task ${scheduledTaskId}`);
+    await loadToday();
+  }
+
   // ⬇️ mark a task as completed
 async function completeTask(scheduledTaskId: string) {
   const supabase = supabaseBrowser();
@@ -684,6 +776,30 @@ async function completeTask(scheduledTaskId: string) {
         return;
       }
       setAuthUid(u.user ? u.user.id : null);
+      
+      // Check if we have any tasks for today
+      const todayLocal = new Intl.DateTimeFormat('en-CA', { 
+        timeZone: 'Europe/London',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
+      
+      const { data: existingTasks } = await supabase
+        .from('scheduled_tasks')
+        .select('id')
+        .eq('local_date', todayLocal)
+        .eq('is_deleted', false)
+        .limit(1);
+      
+      // Only run scheduler if there are no tasks for today
+      if (!existingTasks || existingTasks.length === 0) {
+        console.log('[Today] No tasks found, running scheduler...');
+        await runScheduler();
+      } else {
+        console.log('[Today] Tasks already exist, skipping scheduler');
+      }
+      
       await loadToday();
     })();
   }, []);
@@ -1177,13 +1293,32 @@ async function completeTask(scheduledTaskId: string) {
                                 Edit
                               </button>
                             )}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); completeTask(t.scheduled_task_id); }}
-                              className="text-[10px] rounded border border-green-300 bg-white px-2 py-1 hover:bg-green-50"
-                              title="Mark as completed"
-                            >
-                              ✓
-                            </button>
+                            {t.template_id && t.repeat_unit && t.repeat_unit !== 'none' ? (
+                              <>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); completeTask(t.scheduled_task_id); }}
+                                  className="text-[10px] rounded border border-green-300 bg-white px-2 py-1 hover:bg-green-50"
+                                  title="Mark today's instance as completed"
+                                >
+                                  ✓
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); completeSeries(t.scheduled_task_id); }}
+                                  className="text-[10px] rounded border border-green-500 bg-green-50 px-2 py-1 hover:bg-green-100 font-semibold"
+                                  title="Complete and finish this recurring task permanently"
+                                >
+                                  ✓ Done
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); completeTask(t.scheduled_task_id); }}
+                                className="text-[10px] rounded border border-green-300 bg-white px-2 py-1 hover:bg-green-50"
+                                title="Mark as completed"
+                              >
+                                ✓
+                              </button>
+                            )}
                             
                             {t.template_id && t.repeat_unit && t.repeat_unit !== 'none' ? (
                               <>
@@ -1238,7 +1373,7 @@ async function completeTask(scheduledTaskId: string) {
             <h2 className="text-xl font-semibold mb-4">Edit Task</h2>
             <p className="text-sm text-gray-600 mb-2">{editingTask.title}</p>
             {editingTask.description && (
-              <p className="text-sm text-gray-500 mb-4 italic">{editingTask.description}</p>
+              <p className="text-sm text-gray-500 mb-2 italic">{editingTask.description}</p>
             )}
             
             <form onSubmit={async (e) => {
@@ -1267,9 +1402,11 @@ async function completeTask(scheduledTaskId: string) {
               const start_time = (formData.get('start_time') as string) || null;
               const duration_minutes = parseInt(formData.get('duration_minutes') as string) || null;
               const priority = parseInt(formData.get('priority') as string) || 3;
+              const notes = (formData.get('notes') as string) || null;
               
               const body: any = { 
                 kind: task_type,
+                notes: notes,
                 repeat_unit, 
                 priority
               };
@@ -1296,11 +1433,25 @@ async function completeTask(scheduledTaskId: string) {
               // Add duration for all task types
               if (duration_minutes) body.duration_minutes = duration_minutes;
 
+              // Update the template
               const res = await fetch(`/api/task-templates/${editingTask.template_id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                 body: JSON.stringify(body)
               });
+
+              // Also update the scheduled task's notes field
+              if (res.ok && notes !== editingTask.notes) {
+                const supabase = supabaseBrowser();
+                const { error: notesError } = await supabase
+                  .from('scheduled_tasks')
+                  .update({ description: notes })
+                  .eq('id', editingTask.scheduled_task_id);
+                
+                if (notesError) {
+                  console.error('Failed to update notes:', notesError);
+                }
+              }
 
               if (res.ok) {
                 setEditingTask(null);
@@ -1315,6 +1466,18 @@ async function completeTask(scheduledTaskId: string) {
               }
             }}>
               <div className="space-y-4">
+                {/* Notes field */}
+                <div>
+                  <label className="block text-sm font-medium mb-1">Notes</label>
+                  <textarea
+                    name="notes"
+                    defaultValue={editingTask.notes || ''}
+                    rows={3}
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    placeholder="Add notes for this task instance..."
+                  />
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium mb-1">Task Type</label>
                   <select 
