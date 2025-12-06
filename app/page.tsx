@@ -141,6 +141,8 @@ export default function Home() {
   const signOut = async () => {
     await supabase.auth.signOut();
     setTasks([]);
+    // Force reload to clear state and show login
+    window.location.href = '/auth/login';
   };
 
   // --- signed-out view ---
