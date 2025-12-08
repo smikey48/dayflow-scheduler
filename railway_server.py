@@ -36,11 +36,22 @@ def run_scheduler():
                 'error': 'Missing required fields: date, user_id'
             }), 400
         
+        # Verify Supabase credentials are available
+        if not os.environ.get('SUPABASE_URL') or not os.environ.get('SUPABASE_SERVICE_KEY'):
+            return jsonify({
+                'ok': False,
+                'error': 'Missing Supabase credentials in environment'
+            }), 500
+        
         # Build args for scheduler_main
-        args = ['--date', run_date, '--user', user_id]
+        args = ['--date', run_date, '--user', user_id, '--force']
         
         # Run scheduler
         print(f"Running scheduler for user {user_id} on {run_date}")
+        
+        # Set timezone for the scheduler
+        os.environ['TZ'] = 'Europe/London'
+        os.environ['TEST_USER_ID'] = user_id
         
         # Mock sys.argv for scheduler_main
         old_argv = sys.argv

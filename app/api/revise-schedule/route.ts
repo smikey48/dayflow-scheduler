@@ -47,13 +47,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-        { ok: false, exitCode, error: 'Scheduler exited non-zero', logTail: tail(err || out), elapsedMs: elapsed },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ ok: true, exitCode, logTail: tail(out || err), elapsedMs: elapsed });
+    return NextResponse.json({ 
+      ok: true, 
+      message: data.message,
+      elapsedMs: elapsed 
+    });
   } catch (e: any) {
     console.error('[revise] fatal error', e);
     const status = e?.message === 'Unauthorized' ? 401 : 500;
