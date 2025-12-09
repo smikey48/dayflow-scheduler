@@ -1368,8 +1368,8 @@ async function completeTask(scheduledTaskId: string) {
 
       {/* Edit Task Modal */}
       {editingTask && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full m-4 my-8">
             <h2 className="text-xl font-semibold mb-4">Edit Task</h2>
             <p className="text-sm text-gray-600 mb-2">{editingTask.title}</p>
             {editingTask.description && (
@@ -1462,7 +1462,9 @@ async function completeTask(scheduledTaskId: string) {
                 // Force reload to ensure fresh data from template join
                 window.location.reload();
               } else {
-                alert('Failed to update task');
+                const errorData = await res.json().catch(() => ({}));
+                console.error('Failed to update task:', errorData);
+                alert(`Failed to update task: ${errorData.error_message || errorData.error || 'Unknown error'}`);
               }
             }}>
               <div className="space-y-4">

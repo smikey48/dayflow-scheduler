@@ -44,6 +44,19 @@ export default function Home() {
       setSession(data.session ?? null);
       setUserId(data.session?.user.id ?? null);
       setEmail(data.session?.user.email ?? null);
+
+      // Check if new user needs to see intro
+      if (data.session?.user.id) {
+        const { data: userDetails } = await supabase
+          .from('users')
+          .select('has_seen_intro')
+          .eq('id', data.session.user.id)
+          .single();
+
+        if (userDetails && !userDetails.has_seen_intro) {
+          window.location.href = '/intro';
+        }
+      }
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {

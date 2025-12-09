@@ -37,6 +37,19 @@ export default function LoginPage() {
       }
 
       if (isSignUp) {
+        // Check if email is on the beta allowlist
+        const { data: betaUser, error: betaError } = await supabase
+          .from('beta_users')
+          .select('email')
+          .eq('email', email.toLowerCase())
+          .single();
+
+        if (betaError || !betaUser) {
+          setError('This email is not on the beta access list. Please contact the administrator for an invite.');
+          setLoading(false);
+          return;
+        }
+
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
