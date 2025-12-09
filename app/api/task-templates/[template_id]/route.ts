@@ -132,11 +132,16 @@ export async function PATCH(
     updates.repeat_unit = body.repeat_unit;
     
     // When changing to one-off (none), clear repeat-related fields
+    // BUT: Keep date for appointments (they need it for one-off events)
     if (body.repeat_unit === 'none') {
       updates.repeat_interval = 1;  // Set to 1 for consistency
       updates.repeat_days = null;    // Clear weekly days
       updates.repeat_day = null;     // Clear monthly day
-      updates.date = null;           // Clear reference date
+      // Only clear date for non-appointment tasks
+      // Appointments need a date even when repeat_unit is 'none'
+      if (body.kind !== 'appointment') {
+        updates.date = null;
+      }
     }
   }
 
