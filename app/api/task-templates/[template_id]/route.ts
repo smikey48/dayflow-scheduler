@@ -119,6 +119,16 @@ export async function PATCH(
     updates.is_routine = body.kind === 'routine';
   }
 
+  // Fetch existing template to check if it's an appointment
+  const { data: existingTemplate } = await supabase
+    .from("task_templates")
+    .select("is_appointment, kind")
+    .eq("id", templateId)
+    .eq("user_id", userId)
+    .single();
+
+  const isAppointment = existingTemplate?.is_appointment || body.kind === 'appointment';
+
   // Repeat settings
   if (typeof body.repeat_unit !== "undefined") {
     const validUnits = ['none', 'daily', 'weekly', 'monthly', null];
@@ -139,7 +149,7 @@ export async function PATCH(
       updates.repeat_day = null;     // Clear monthly day
       // Only clear date for non-appointment tasks
       // Appointments need a date even when repeat_unit is 'none'
-      if (body.kind !== 'appointment') {
+      if (!isAppointment) {
         updates.date = null;
       }
     }
