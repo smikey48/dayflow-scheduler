@@ -1,0 +1,191 @@
+2025-12-10 07:00:02,410 INFO DayFlow scheduler starting (tz=Europe/London, dry_run=False, force=True)
+2025-12-10 07:00:03,431 INFO Supabase client created.
+2025-12-10 07:00:03,431 INFO Run date = 2025-12-10 (Europe/London local)
+2025-12-10 07:00:05,784 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=user_id%2Ctitle%2Ctemplate_id%2Cduration_minutes%2Cpriority%2Cis_appointment%2Cis_routine%2Cis_fixed%2Ctimezone&local_date=eq.2025-12-09&is_deleted=eq.False&is_completed=eq.False&is_appointment=eq.False&is_routine=eq.False "HTTP/2 200 OK"
+2025-12-10 07:00:06,204 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/task_templates?select=id%2Cis_deleted%2Crepeat_unit%2Crepeat%2Crepeat_interval%2Crepeat_days%2Cpriority&id=in.%280c68a092-2205-4633-8ce3-7f2c91bf8deb%2C1fac3af7-8f7e-4cbd-9a1c-2a7830b52157%2C3c917dd5-0a59-4e5b-86c9-960c6b5813d8%2C7422ae8c-6294-457b-b9af-845bd6e61b71%2C7c048276-e63f-4adc-b348-a11e7bb2baef%2C9c93ff75-d934-4e5b-91b4-1d91e8d6804a%2Cacf1c73a-beb0-4fcb-8ab7-32c16c0d2356%2Cc6fe02af-76c9-439c-9e20-d3c6ca8aba5d%2Cf7fdd0e6-c96b-4a88-b792-5dccbfa27efa%2Cff277868-cb12-4aa7-8039-252081a16cfc%29 "HTTP/2 200 OK"
+2025-12-10 07:00:06,284 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=template_id%2Cstart_time&local_date=eq.2025-12-10 "HTTP/2 200 OK"
+2025-12-10 07:00:06,690 INFO HTTP Request: POST https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?on_conflict=user_id%2Clocal_date%2Ctemplate_id&columns=%22user_id%22%2C%22end_time%22%2C%22timezone%22%2C%22title%22%2C%22is_appointment%22%2C%22start_time%22%2C%22duration_minutes%22%2C%22priority%22%2C%22template_id%22%2C%22local_date%22%2C%22is_fixed%22%2C%22is_routine%22 "HTTP/2 201 Created"
+2025-12-10 07:00:06,855 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/task_templates?select=%2A&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&is_deleted=eq.False "HTTP/2 200 OK"
+2025-12-10 07:00:06,874 INFO templates: fetched 48 row(s) for user_id=3c877140-9539-47b9-898a-45eeab392e39
+2025-12-10 07:00:06,874 INFO templates: columns=['id', 'user_id', 'title', 'description', 'kind', 'repeat', 'repeat_day', 'suggested_duration_minutes', 'origin_source', 'created_at', 'updated_at', 'active', 'repeat_interval', 'repeat_days', 'day_of_month', 'timezone', 'repeat_unit', 'start_time', 'duration_minutes', 'is_routine', 'is_fixed', 'is_appointment', 'notes', 'date', 'priority', 'window_start_local', 'window_end_local', 'is_deleted']
+2025-12-10 07:00:06,877 INFO templates: preview (up to 5)=[{'id': '0b2ea488-d48d-41fc-abb7-42f08cf80a8b', 'title': 'test floating task', 'repeat_unit': 'none', 'repeat': 'none', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'start_time': None, 'duration_minutes': 70, 'is_appointment': False, 'is_fixed': False, 'is_routine': False, 'timezone': 'Europe/London', 'date': '2025-10-28'}, {'id': 'de0e34aa-1a30-4168-a59d-00ecd69aa119', 'title': 'Lunch/reading', 'repeat_unit': 'daily', 'repeat': None, 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'start_time': '13:00:00', 'duration_minutes': 60, 'is_appointment': False, 'is_fixed': False, 'is_routine': True, 'timezone': 'Europe/London', 'date': None}, {'id': '00be83de-3c34-4b37-b84b-960b97d32dcc', 'title': 'Frozen taps', 'repeat_unit': 'none', 'repeat': 'none', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'start_time': None, 'duration_minutes': 30, 'is_appointment': False, 'is_fixed': False, 'is_routine': False, 'timezone': 'Europe/London', 'date': '2025-11-20'}, {'id': '2cdff50f-0349-4926-9740-e031b5bc3f80', 'title': 'Caitlin Bench', 'repeat_unit': 'none', 'repeat': 'none', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'start_time': '14:00:00', 'duration_minutes': 30, 'is_appointment': True, 'is_fixed': True, 'is_routine': False, 'timezone': 'Europe/London', 'date': '2025-11-21'}, {'id': 'be1d0d9d-99c2-4b91-94e2-36d2416cc92e', 'title': 'Recycle', 'repeat_unit': 'weekly', 'repeat': 'weekly', 'repeat_interval': 2, 'repeat_day': None, 'repeat_days': [0], 'start_time': None, 'duration_minutes': 30, 'is_appointment': False, 'is_fixed': False, 'is_routine': False, 'timezone': 'Europe/London', 'date': '2025-11-24'}]
+2025-12-10 07:00:07,028 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=%2A&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&local_date=in.%282025-12-09%2C2025-12-10%29 "HTTP/2 200 OK"
+2025-12-10 07:00:07,032 INFO Fetched 31 rows from scheduled_tasks for dates 2025-12-09, 2025-12-10
+2025-12-10 07:00:07,033 INFO Fetched titles: ['Clear leaves', 'Singers', 'Letting flat 3', 'ADHD assessment', 'coffee/reading', 'Therapy homework', 'Woodland Management Plan', 'Book Mahjong', 'DayFlow activation', 'B/F file']
+2025-12-10 07:00:07,035 INFO Old schedule preview: [{'title': 'Clear leaves', 'is_completed': False, 'date': '2025-12-09'}, {'title': 'Singers', 'is_completed': True, 'date': '2025-12-09'}, {'title': 'Letting flat 3', 'is_completed': True, 'date': '2025-12-09'}, {'title': 'ADHD assessment', 'is_completed': False, 'date': '2025-12-09'}, {'title': 'coffee/reading', 'is_completed': True, 'date': '2025-12-09'}]
+2025-12-10 07:00:07,232 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=template_id%2Clocal_date&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&local_date=neq.2025-12-10 "HTTP/2 200 OK"
+2025-12-10 07:00:07,447 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks_archive?select=template_id%2Clocal_date&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&local_date=neq.2025-12-10 "HTTP/2 200 OK"
+2025-12-10 07:00:07,449 INFO One-off block list (template_id,title,repeat_unit): [{'id': '0b2ea488-d48d-41fc-abb7-42f08cf80a8b', 'title': 'test floating task', 'repeat_unit': 'none'}, {'id': '00be83de-3c34-4b37-b84b-960b97d32dcc', 'title': 'Frozen taps', 'repeat_unit': 'none'}, {'id': '2cdff50f-0349-4926-9740-e031b5bc3f80', 'title': 'Caitlin Bench', 'repeat_unit': 'none'}, {'id': '227d7f51-04e1-4fdd-a7db-d365093d316d', 'title': 'WATER SUPPLY', 'repeat_unit': 'none'}, {'id': '0a541e80-d7f2-4dea-9951-be58bde6893a', 'title': 'Electricity bills', 'repeat_unit': 'none'}, {'id': 'ff277868-cb12-4aa7-8039-252081a16cfc', 'title': 'Water management', 'repeat_unit': 'none'}, {'id': 'e6b75c4d-c03a-4b93-ab74-caf51979e985', 'title': 'ADHD interview', 'repeat_unit': 'none'}, {'id': '6d1aedbb-cb63-49ab-8672-3f5855e2c096', 'title': 'Dentist - checkup', 'repeat_unit': 'none'}, {'id': '3a3d6d0b-513d-4381-ba99-bf25fd0a5327', 'title': 'Alex Wheeler re investments', 'repeat_unit': 'none'}, {'id': 'df531ca0-cd1f-4339-bd21-446b325ad72c', 'title': 'Haircut', 'repeat_unit': 'none'}, {'id': '9f6737ce-1ae2-40a9-9d64-dc8d4b50bbca', 'title': 'Viewing by Mr Loveridge', 'repeat_unit': 'none'}, {'id': '408b029f-25df-40cd-8bf7-9c7fd145c057', 'title': 'Collect Sarah from Colwall', 'repeat_unit': 'none'}, {'id': '8c50593f-f8ba-4ac6-9cb7-4e97268c6b52', 'title': 'water reset', 'repeat_unit': 'none'}, {'id': '909cde04-794a-4ebb-93c1-b840ec236c3c', 'title': "Fix Rob's Door", 'repeat_unit': 'none'}, {'id': '511ddbd9-351e-48e7-9526-6dc087430e66', 'title': 'Signing Ellie off', 'repeat_unit': 'none'}, {'id': '9279a4f4-5e4a-4194-aac9-573944239daf', 'title': 'Septic Survey', 'repeat_unit': 'none'}, {'id': 'acf1c73a-beb0-4fcb-8ab7-32c16c0d2356', 'title': 'Milling project', 'repeat_unit': 'none'}]
+2025-12-10 07:00:07,449 INFO Excluding 17 one-off template(s) already used on a different day
+2025-12-10 07:00:07,450 INFO Old schedule shape: (31, 26), checking for completed tasks today (2025-12-10)
+2025-12-10 07:00:07,450 INFO Old schedule has 12 tasks marked as completed (any date)
+2025-12-10 07:00:07,452 INFO Found 0 completed tasks specifically today in old_schedule_df
+2025-12-10 07:00:07,454 INFO Patching origin_template_id for completed task 'Lunch/reading'
+2025-12-10 07:00:07,455 INFO Patching origin_template_id for completed task 'Recycle'
+2025-12-10 07:00:07,456 INFO Patching origin_template_id for completed task 'coffee/reading'
+2025-12-10 07:00:07,457 INFO Patching origin_template_id for completed task 'code dayflow2 - update and correct'
+2025-12-10 07:00:07,458 INFO Patching origin_template_id for completed task 'Clear grotto'
+2025-12-10 07:00:07,459 INFO Patching origin_template_id for completed task 'Woodland Management Plan'
+2025-12-10 07:00:07,460 INFO Patching origin_template_id for completed task 'Check sewers'
+2025-12-10 07:00:07,461 INFO Patching origin_template_id for completed task 'Clear leaves'
+2025-12-10 07:00:07,461 INFO Patching origin_template_id for completed task 'DayFlow activation'
+2025-12-10 07:00:07,462 INFO Patching origin_template_id for completed task 'Pay Bills'
+2025-12-10 07:00:07,463 INFO Patching origin_template_id for completed task 'Therapy homework'
+2025-12-10 07:00:07,464 INFO Patching origin_template_id for completed task 'Book Mahjong'
+2025-12-10 07:00:07,464 INFO Patching origin_template_id for completed task 'Singers'
+2025-12-10 07:00:07,466 INFO Patching origin_template_id for completed task 'emails'
+2025-12-10 07:00:07,468 INFO Patching origin_template_id for completed task 'Letting flat 3'
+2025-12-10 07:00:07,469 INFO Patching origin_template_id for completed task 'Desk clear/paperwork'
+2025-12-10 07:00:07,471 INFO Patching origin_template_id for completed task 'ADHD assessment'
+2025-12-10 07:00:07,472 INFO Patching origin_template_id for completed task 'B/F file'
+2025-12-10 07:00:07,473 INFO Patching origin_template_id for completed task 'Light bulbs'
+2025-12-10 07:00:07,474 INFO Patching origin_template_id for completed task 'Choir practice'
+2025-12-10 07:00:07,484 INFO Skipping duplicate instantiation of 'Clear grotto'
+2025-12-10 07:00:07,486 INFO Skipping duplicate instantiation of 'Woodland Management Plan'
+2025-12-10 07:00:07,488 INFO Skipping duplicate instantiation of 'Clear leaves'
+2025-12-10 07:00:07,501 INFO Skipping duplicate instantiation of 'Desk clear/paperwork'
+2025-12-10 07:00:07,505 INFO Skipping duplicate instantiation of 'ADHD assessment'
+2025-12-10 07:00:07,512 INFO Skipping duplicate instantiation of 'Choir practice'
+2025-12-10 07:00:07,512 INFO Instantiation report (11): [{'template_id': 'de0e34aa-1a30-4168-a59d-00ecd69aa119', 'title': 'Lunch/reading', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T13:00:00+00:00', 'start_utc': '2025-12-10T13:00:00+00:00', 'duration_min': 60, 'reason': 'daily'}, {'template_id': '209e8601-0b9f-42de-8a50-6406327d06fa', 'title': 'coffee/reading', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T11:00:00+00:00', 'start_utc': '2025-12-10T11:00:00+00:00', 'duration_min': 40, 'reason': 'daily'}, {'template_id': 'c8e62685-8b13-4922-92fe-420d38ba0d90', 'title': 'code dayflow2 - update and correct', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 60, 'reason': 'daily'}, {'template_id': '56c0c529-b646-4b85-92ff-3867cc5d309e', 'title': 'DayFlow activation', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 30, 'reason': 'daily'}, {'template_id': '6da2dd7a-d937-44c6-9ef5-5dd955fdd739', 'title': 'Antonia', 'repeat_unit': 'weekly', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': [2], 'reference_date': '2025-11-05', 'today': '2025-12-10', 'start_local': '2025-12-10T10:00:00+00:00', 'start_utc': '2025-12-10T10:00:00+00:00', 'duration_min': 60, 'reason': 'weekly (weeks_since=5, interval=1, dow=2, days=[2])'}, {'template_id': 'fdc12458-1be8-40a5-9abd-57ed46986c9f', 'title': 'emails', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 30, 'reason': 'daily'}, {'template_id': '1374b9c4-e211-4c2e-999f-4c9157bf05dc', 'title': 'Letting flat 3', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 15, 'reason': 'daily'}, {'template_id': '44c31187-1a50-411a-a0d3-72384517edf1', 'title': 'finalise Ocado order', 'repeat_unit': 'weekly', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': [2], 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 30, 'reason': 'weekly (weeks_since=0, interval=1, dow=2, days=[2])'}, {'template_id': '2d7fd5d1-9da2-45cf-bd3a-62843e89c351', 'title': 'Barbershop', 'repeat_unit': 'weekly', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': [2], 'reference_date': '2025-11-05', 'today': '2025-12-10', 'start_local': '2025-12-10T19:30:00+00:00', 'start_utc': '2025-12-10T19:30:00+00:00', 'duration_min': 180, 'reason': 'weekly (weeks_since=5, interval=1, dow=2, days=[2])'}, {'template_id': '5c9c9102-0462-4ff8-be84-eac8569bef85', 'title': 'B/F file', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 5, 'reason': 'daily'}, {'template_id': '83ffa488-6218-4aee-8801-f3bf52c874e7', 'title': 'Light bulbs', 'repeat_unit': 'daily', 'repeat_interval': 1, 'repeat_day': None, 'repeat_days': None, 'reference_date': '2025-12-10', 'today': '2025-12-10', 'start_local': '2025-12-10T09:00:00+00:00', 'start_utc': '2025-12-10T09:00:00+00:00', 'duration_min': 30, 'reason': 'daily'}]
+2025-12-10 07:00:07,513 INFO Skip report (20): [{'template_id': 'be1d0d9d-99c2-4b91-94e2-36d2416cc92e', 'title': 'Recycle', 'reason': 'weekly not due today (dow=2, days=[0])'}, {'template_id': '1964fbe2-3941-4da6-b1e2-37fb66fbaf10', 'title': 'Read meters', 'reason': 'monthly not due this month (months_since=2, interval=3)'}, {'template_id': 'd2671250-aa7c-413c-9e52-76fb6b53f508', 'title': 'Black bags', 'reason': 'weekly not due this week (weeks_since=3, interval=2)'}, {'template_id': 'f7fdd0e6-c96b-4a88-b792-5dccbfa27efa', 'title': 'Clear grotto', 'reason': 'already instantiated today (active)'}, {'template_id': '3c917dd5-0a59-4e5b-86c9-960c6b5813d8', 'title': 'Woodland Management Plan', 'reason': 'already instantiated today (active)'}, {'template_id': '7422ae8c-6294-457b-b9af-845bd6e61b71', 'title': 'Check sewers', 'reason': 'monthly not due today (day=10, needed=5)'}, {'template_id': '0c68a092-2205-4633-8ce3-7f2c91bf8deb', 'title': 'Clear leaves', 'reason': 'already instantiated today (active)'}, {'template_id': '93bf4f6d-6dc2-4c39-9925-875de3dc01ed', 'title': 'Pay Bills', 'reason': 'weekly not due today (dow=2, days=[1])'}, {'template_id': '2cbe80cb-d32f-448b-9817-d8f082d2af29', 'title': 'Therapy homework', 'reason': 'weekly not due today (dow=2, days=[1])'}, {'template_id': '550e00be-c559-4425-a509-ad8c15d92133', 'title': 'Book Mahjong', 'reason': 'weekly not due today (dow=2, days=[1])'}, {'template_id': '133915cc-6d6c-4eff-8476-d0969cb05e08', 'title': 'Singers', 'reason': 'weekly not due today (dow=2, days=[1])'}, {'template_id': 'c2eb208b-c823-434b-98c5-82d63991e4bc', 'title': 'Water Softener', 'reason': 'weekly not due today (dow=2, days=[0])'}, {'template_id': '82885591-1a30-42f6-b51d-e337c489793b', 'title': 'Mah Jong', 'reason': 'weekly not due today (dow=2, days=[3])'}, {'template_id': '55291735-d6ec-4582-83d3-586e9410e03a', 'title': 'Mr Roberts starting', 'reason': 'weekly not due today (dow=2, days=[4])'}, {'template_id': 'cde5bf72-84cc-4d21-a039-9e26e02a32d0', 'title': 'Mr Roberts finishing', 'reason': 'weekly not due today (dow=2, days=[4])'}, {'template_id': '663ba09d-235b-47be-a383-78af13b68f30', 'title': 'Ocado delivery', 'reason': 'weekly not due today (dow=2, days=[4])'}, {'template_id': '9c93ff75-d934-4e5b-91b4-1d91e8d6804a', 'title': 'Desk clear/paperwork', 'reason': 'already instantiated today (active)'}, {'template_id': 'eb281d6d-dbd4-42ea-b18b-90462068081b', 'title': 'Financial update', 'reason': 'weekly not due today (dow=2, days=[5])'}, {'template_id': '1fac3af7-8f7e-4cbd-9a1c-2a7830b52157', 'title': 'ADHD assessment', 'reason': 'already instantiated today (active)'}, {'template_id': 'c6fe02af-76c9-439c-9e20-d3c6ca8aba5d', 'title': 'Choir practice', 'reason': 'already instantiated today (active)'}]
+2025-12-10 07:00:07,513 INFO Skip summary: {'weekly not due today (dow=2, days=[0])': 2, 'monthly not due this month (months_since=2, interval=3)': 1, 'weekly not due this week (weeks_since=3, interval=2)': 1, 'already instantiated today (active)': 6, 'monthly not due today (day=10, needed=5)': 1, 'weekly not due today (dow=2, days=[1])': 4, 'weekly not due today (dow=2, days=[3])': 1, 'weekly not due today (dow=2, days=[4])': 3, 'weekly not due today (dow=2, days=[5])': 1}
+C:\Projects\dayflow-ui\dayflow2-gui\dayflow\planner.py:1011: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  existing_today_tasks.at[idx, "window_start_local"] = template.get("window_start_local")
+C:\Projects\dayflow-ui\dayflow2-gui\dayflow\planner.py:1013: SettingWithCopyWarning: 
+A value is trying to be set on a copy of a slice from a DataFrame.
+Try using .loc[row_indexer,col_indexer] = value instead
+
+See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+  existing_today_tasks.at[idx, "window_end_local"] = template.get("window_end_local")
+2025-12-10 07:00:07,642 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=%2A&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&local_date=eq.2025-12-10&start_time=is.null&is_completed=eq.False&is_deleted=eq.False "HTTP/2 200 OK"
+2025-12-10 07:00:07,643 INFO Found 9 unscheduled task(s) that need time slots
+2025-12-10 07:00:07,648 INFO Prepared 29 instance(s) for 2025-12-10
+2025-12-10 07:00:07,648 INFO De-dup: dropped 9 duplicate row(s) on (user_id,local_date,template_id)
+2025-12-10 07:00:07,648 INFO Prepared 20 instance(s) for 2025-12-10 (post-dedupe)
+2025-12-10 07:00:07,648 INFO Preprocessed 20 instance(s).
+2025-12-10 07:00:07,798 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=template_id&local_date=eq.2025-12-10&is_deleted=eq.True&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39 "HTTP/2 200 OK"
+2025-12-10 07:00:07,856 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/task_templates?select=id&is_deleted=eq.True&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39 "HTTP/2 200 OK"
+2025-12-10 07:00:07,857 INFO Template-deleted filter: 21 template(s) removed (from 20 \u2192 20).
+2025-12-10 07:00:07,857 INFO Force mode: starting schedule from default start time 08:00 (current time 07:00 is earlier)
+C:\Projects\dayflow-ui\dayflow2-gui\dayflow\planner.py:1469: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  tasks_df['is_floating'] = tasks_df['is_floating'].fillna(False).astype(bool)
+2025-12-10 07:00:07,999 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=%2A&limit=1 "HTTP/2 200 OK"
+2025-12-10 07:00:08,039 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=%2A&limit=1 "HTTP/2 200 OK"
+2025-12-10 07:00:08,188 INFO HTTP Request: GET https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?select=id&user_id=eq.3c877140-9539-47b9-898a-45eeab392e39&local_date=eq.2025-12-10&is_completed=eq.False "HTTP/2 200 OK"
+2025-12-10 07:00:08,243 INFO HTTP Request: DELETE https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?id=in.%28a0092d2d-782a-45ee-bab1-ce0b2e9ba823%2Ccb9d0c13-8e2b-4628-b569-847b00292f47%2Cbdd1a60d-96ea-44a3-bc0b-5690f61931a5%2C491c0178-b3e1-4ade-abd9-003121277644%2C25ea9030-994f-4cf5-ab44-118e6aae235b%2Ce52835a6-723b-4bfb-9d8e-a6e3c9c21a88%2C125393e3-8de3-4a3d-84cf-706653bbe274%29 "HTTP/2 200 OK"
+2025-12-10 07:00:08,299 INFO HTTP Request: POST https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?on_conflict=user_id%2Clocal_date%2Ctemplate_id&columns=%22user_id%22%2C%22end_time%22%2C%22timezone%22%2C%22title%22%2C%22is_appointment%22%2C%22start_time%22%2C%22duration_minutes%22%2C%22priority%22%2C%22template_id%22%2C%22local_date%22%2C%22is_fixed%22%2C%22is_routine%22 "HTTP/2 201 Created"
+2025-12-10 07:00:08,359 INFO HTTP Request: PATCH https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?id=eq.2b07cd54-1658-4766-aa32-449d0c8e47c3 "HTTP/2 200 OK"
+2025-12-10 07:00:08,403 INFO HTTP Request: PATCH https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?id=eq.8ab03768-e48e-487d-aac3-9f27a5b46c2e "HTTP/2 200 OK"
+2025-12-10 07:00:08,449 INFO HTTP Request: POST https://prloxvewcsxaptzgxvyy.supabase.co/rest/v1/scheduled_tasks?on_conflict=user_id%2Clocal_date%2Ctemplate_id&columns=%22user_id%22%2C%22end_time%22%2C%22timezone%22%2C%22title%22%2C%22is_appointment%22%2C%22start_time%22%2C%22duration_minutes%22%2C%22priority%22%2C%22template_id%22%2C%22local_date%22%2C%22is_fixed%22%2C%22description%22%2C%22is_routine%22 "HTTP/2 201 Created"
+2025-12-10 07:00:08,449 INFO Scheduled 18 item(s).
+
+[Scheduler Env Preflight]
+  SUPABASE_URL: https:àe.co
+  SUPABASE_SERVICE_ROLE_KEY: sb_secàZocg
+  SUPABASE_SERVICE_KEY:      sb_secàZocg
+[Env OK]
+
+[carry_forward] Upserted 10 carried-forward tasks for 2025-12-10.
+Filtered out 0 template task(s).
+[DEBUG] tasks_df after template filter: 20 tasks
+
+[DEBUG] free_gaps_list before floating task scheduling:
+  Gap: 08:00 - 10:00
+  Gap: 11:40 - 13:00
+  Gap: 14:00 - 19:30
+  Gap: 22:30 - 23:00
+[DEBUG] floating_tasks_only_df: 16 tasks
+[DEBUG] prescheduled_df: 4 tasks
+[DEBUG] Floating task scheduling order:
+  - B/F file: priority=1, duration=5min
+  - Letting flat 3: priority=1, duration=15min
+  - emails: priority=1, duration=30min
+  - finalise Ocado order: priority=1, duration=30min
+  - Choir practice: priority=1, duration=30min
+  - code dayflow2 - update and correct: priority=1, duration=60min
+  - DayFlow activation: priority=2, duration=30min
+  - Light bulbs: priority=2, duration=30min
+  - Check sewers: priority=2, duration=30min
+  - Desk clear/paperwork: priority=2, duration=30min
+  - Milling project: priority=2, duration=30min
+  - ADHD assessment: priority=3, duration=30min
+  - Water management: priority=3, duration=30min
+  - Clear leaves: priority=3, duration=45min
+  - Clear grotto: priority=3, duration=60min
+  - Woodland Management Plan: priority=4, duration=30min
+[DEBUG] Task 'B/F file' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'B/F file' (5min) in gap 08:00-10:00, eff: 08:00-10:00
+[DEBUG] Result: 08:00 - 08:05
+[DEBUG] Task 'Letting flat 3' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'Letting flat 3' (15min) in gap 08:05-10:00, eff: 08:05-10:00
+[DEBUG] Result: 08:05 - 08:20
+[DEBUG] Task 'emails' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'emails' (30min) in gap 08:20-10:00, eff: 08:20-10:00
+[DEBUG] Result: 08:20 - 08:50
+[DEBUG] Task 'finalise Ocado order' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'finalise Ocado order' (30min) in gap 08:50-10:00, eff: 08:50-10:00
+[DEBUG] Result: 08:50 - 09:20
+[DEBUG] Task 'Choir practice' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'Choir practice' (30min) in gap 09:20-10:00, eff: 09:20-10:00
+[DEBUG] Result: 09:20 - 09:50
+[DEBUG] Task 'code dayflow2 - update and correct' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'code dayflow2 - update and correct' (60min) in gap 11:40-13:00, eff: 11:40-13:00
+[DEBUG] Result: 11:40 - 12:40
+[DEBUG] Task 'DayFlow activation' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'DayFlow activation' (30min) in gap 14:00-19:30, eff: 14:00-19:30
+[DEBUG] Result: 14:00 - 14:30
+[DEBUG] Task 'Light bulbs' window: 08:00-23:00, has window_start=None, window_end=None
+[DEBUG] Trying to fit 'Light bulbs' (30min) in gap 14:30-19:30, eff: 14:30-19:30
+[DEBUG] Result: 14:30 - 15:00
+[DEBUG] Task 'Check sewers' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'Check sewers' (30min) in gap 15:00-19:30, eff: 15:00-19:30
+[DEBUG] Result: 15:00 - 15:30
+[DEBUG] Task 'Desk clear/paperwork' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'Desk clear/paperwork' (30min) in gap 15:30-19:30, eff: 15:30-19:30
+[DEBUG] Result: 15:30 - 16:00
+[DEBUG] Task 'Milling project' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'Milling project' (30min) in gap 16:00-19:30, eff: 16:00-19:30
+[DEBUG] Result: 16:00 - 16:30
+[DEBUG] Task 'ADHD assessment' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'ADHD assessment' (30min) in gap 16:30-19:30, eff: 16:30-19:30
+[DEBUG] Result: 16:30 - 17:00
+[DEBUG] Task 'Water management' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'Water management' (30min) in gap 17:00-19:30, eff: 17:00-19:30
+[DEBUG] Result: 17:00 - 17:30
+[DEBUG] Task 'Clear leaves' window: 14:00-17:00, has window_start=14:00:00, window_end=17:00:00
+No room inside window for 'nan' [14:00û17:00]; deferring.
+[DEBUG] Task 'Clear grotto' window: 14:00-16:30, has window_start=14:00:00, window_end=16:30:00
+No room inside window for 'nan' [14:00û16:30]; deferring.
+[DEBUG] Task 'Woodland Management Plan' window: 08:00-23:00, has window_start=nan, window_end=nan
+[DEBUG] Trying to fit 'Woodland Management Plan' (30min) in gap 17:30-19:30, eff: 17:30-19:30
+[DEBUG] Result: 17:30 - 18:00
+
+============================================================
+2 floating tasks could not be scheduled today:
+ - Clear leaves (Priority 3, Duration 45 min)
+ - Clear grotto (Priority 3, Duration 60 min)
+============================================================
+
+schedule_day candidates=16 filtered=16 allowed_cols=['created_at', 'date', 'description', 'duration_minutes', 'end_time', 'id', 'is_appointment', 'is_completed', 'is_deleted', 'is_fixed', 'is_routine', 'last_completed_date', 'local_date', 'origin_template_id', 'priority', 'start_time', 'template_id', 'timezone', 'title', 'updated_at', 'user_id']
+schedule_day first row sample: {'duration_minutes': 5,
+ 'end_time': '2025-12-10T08:05:00+00:00',
+ 'is_appointment': False,
+ 'is_fixed': False,
+ 'is_routine': False,
+ 'local_date': '2025-12-10',
+ 'priority': 1,
+ 'start_time': '2025-12-10T08:00:00+00:00',
+ 'template_id': '5c9c9102-0462-4ff8-be84-eac8569bef85',
+ 'timezone': 'Europe/London',
+ 'title': 'B/F file',
+ 'user_id': '3c877140-9539-47b9-898a-45eeab392e39'}
+schedule_day: DELETING old tasks for 2025-12-10
+schedule_day: Deleted 7 old task(s)
+schedule_day: WRITING 16 new task(s) to scheduled_tasks for 2025-12-10
+schedule_day upserted=16 attempted=16 conflict_target=user_id,local_date,template_id
+schedule_day: UPDATING 2 existing task(s)
+schedule_day: WRITING 2 unscheduled task(s) with explanations
