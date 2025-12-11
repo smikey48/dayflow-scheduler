@@ -63,8 +63,9 @@ export default function LoginPage() {
         if (data.user) {
           // If email confirmation is disabled, redirect immediately
           if (data.session) {
-            router.push('/');
-            router.refresh();
+            // New user - redirect to intro page
+            window.location.href = '/intro';
+            return;
           } else {
             setMessage('Check your email for the confirmation link!');
           }
