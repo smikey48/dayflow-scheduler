@@ -8,7 +8,7 @@ export default function IntroductionPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [userId, setUserId] = useState<string | null>(null);
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   useEffect(() => {
     (async () => {
@@ -33,13 +33,13 @@ export default function IntroductionPage() {
       setCurrentStep(currentStep + 1);
     } else {
       await markIntroComplete();
-      router.push('/');
+      router.push('/today');
     }
   };
 
   const skipIntro = async () => {
     await markIntroComplete();
-    router.push('/');
+    router.push('/today');
   };
 
   return (
@@ -77,9 +77,9 @@ export default function IntroductionPage() {
 
           {currentStep === 2 && (
             <>
-              <h2 className="text-3xl font-bold text-gray-900">📋 Task Templates</h2>
+              <h2 className="text-3xl font-bold text-gray-900">📋 Floating Tasks</h2>
               <p className="text-lg text-gray-600">
-                Create task templates with durations, priorities, and schedules. DayFlow will automatically fit them into your day.
+                Create tasks with duration and priority. DayFlow will automatically fit them into your day.
               </p>
               <div className="bg-gray-50 rounded-lg p-6 text-left space-y-2">
                 <div className="flex items-center space-x-3">
@@ -88,15 +88,11 @@ export default function IntroductionPage() {
                 </div>
                 <div className="flex items-center space-x-3">
                   <span className="text-2xl">🔄</span>
-                  <span className="text-gray-700"><strong>Recurring tasks:</strong> Daily, weekly, or monthly</span>
+                  <span className="text-gray-700"><strong>Recurring tasks:</strong> Daily, weekly, or monthly tasks that repeat</span>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <span className="text-2xl">📅</span>
-                  <span className="text-gray-700"><strong>Appointments:</strong> Fixed time events</span>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <span className="text-2xl">🌅</span>
-                  <span className="text-gray-700"><strong>Routines:</strong> Morning/evening activities</span>
+                  <span className="text-2xl">⏰</span>
+                  <span className="text-gray-700"><strong>Flexible timing:</strong> The AI scheduler finds the best time slot for you</span>
                 </div>
               </div>
             </>
@@ -104,9 +100,41 @@ export default function IntroductionPage() {
 
           {currentStep === 3 && (
             <>
+              <h2 className="text-3xl font-bold text-gray-900">📅 Appointments & Routines</h2>
+              <p className="text-lg text-gray-600">
+                Schedule fixed-time activities that happen at specific times. These can be one-time or recurring.
+              </p>
+              <div className="bg-gray-50 rounded-lg p-6 text-left space-y-3">
+                <div className="flex items-start space-x-3">
+                  <span className="text-2xl flex-shrink-0">📅</span>
+                  <div>
+                    <p className="font-semibold text-gray-900">Appointments</p>
+                    <p className="text-gray-600 text-sm">Fixed time meetings with other people (e.g., doctor at 2 PM)</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <span className="text-2xl flex-shrink-0">🌅</span>
+                  <div>
+                    <p className="font-semibold text-gray-900">Routines</p>
+                    <p className="text-gray-600 text-sm">Regular activities at specific times (e.g., morning coffee at 11 AM)</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-3">
+                  <span className="text-2xl flex-shrink-0">🔒</span>
+                  <div>
+                    <p className="font-semibold text-gray-900">Fixed Schedule</p>
+                    <p className="text-gray-600 text-sm">These tasks anchor your day at their scheduled times</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {currentStep === 4 && (
+            <>
               <h2 className="text-3xl font-bold text-gray-900">🤖 Automatic Scheduling</h2>
               <p className="text-lg text-gray-600">
-                Every morning at 7 AM, DayFlow automatically creates your daily schedule based on your templates.
+                Every morning at 7 AM, DayFlow automatically creates your daily schedule.
               </p>
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 space-y-4">
                 <div className="text-left space-y-3">
@@ -114,7 +142,7 @@ export default function IntroductionPage() {
                     <strong className="text-blue-600">Smart scheduling:</strong> Tasks are arranged by priority and time constraints
                   </p>
                   <p className="text-gray-700">
-                    <strong className="text-blue-600">Flexible tasks:</strong> Non-appointment tasks can be moved around
+                    <strong className="text-blue-600">Floating tasks:</strong> Non-appointment tasks can be moved around
                   </p>
                   <p className="text-gray-700">
                     <strong className="text-blue-600">Carry forward:</strong> Incomplete tasks roll over to the next day
@@ -124,7 +152,7 @@ export default function IntroductionPage() {
             </>
           )}
 
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <>
               <h2 className="text-3xl font-bold text-gray-900">🎯 Ready to Start!</h2>
               <p className="text-lg text-gray-600">
@@ -134,14 +162,14 @@ export default function IntroductionPage() {
                 <div className="flex items-start space-x-3">
                   <span className="text-2xl flex-shrink-0">1️⃣</span>
                   <div>
-                    <p className="font-semibold text-gray-900">Create your first task template</p>
-                    <p className="text-gray-600 text-sm">Go to Tasks and add activities you want to schedule</p>
+                    <p className="font-semibold text-gray-900">Create your first tasks</p>
+                    <p className="text-gray-600 text-sm">Go to Create Tasks and add activities you want to schedule</p>
                   </div>
                 </div>
                 <div className="flex items-start space-x-3">
                   <span className="text-2xl flex-shrink-0">2️⃣</span>
                   <div>
-                    <p className="font-semibold text-gray-900">Check your Today view</p>
+                    <p className="font-semibold text-gray-900">Use Today's Schedule</p>
                     <p className="text-gray-600 text-sm">See your scheduled tasks for the day</p>
                   </div>
                 </div>

@@ -8,8 +8,8 @@
 # Or run this script to create the shortcut automatically:
 # .\install-autopush-startup.ps1
 
-$scriptPath = "C:\Projects\dayflow-ui\dayflow2-gui\auto-push.ps1"
-$workingDir = "C:\Projects\dayflow-ui\dayflow2-gui"
+$scriptPath = "C:\Projects\dayflow-scheduler\auto-push.ps1"
+$workingDir = "C:\Projects\dayflow-scheduler"
 
 # Check if auto-push is already running
 $existingProcess = Get-Process pwsh -ErrorAction SilentlyContinue | Where-Object {

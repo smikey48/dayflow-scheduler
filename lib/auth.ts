@@ -7,22 +7,7 @@ import { cookies } from 'next/headers';
  * Returns the user ID if authenticated, or throws an error if not.
  */
 export async function getAuthenticatedUserId(req: NextRequest): Promise<string> {
-  // Check for auth token in cookie OR Authorization header
-  let authToken = req.cookies.get('sb-auth-token')?.value;
-  
-  if (!authToken) {
-    // Check Authorization header as fallback
-    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
-    if (authHeader?.startsWith('Bearer ')) {
-      authToken = authHeader.substring(7);
-    }
-  }
-  
-  if (!authToken) {
-    throw new Error('Unauthorized');
-  }
-
-  // Verify the token with Supabase
+  // Create Supabase client that reads session from cookies
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -34,14 +19,10 @@ export async function getAuthenticatedUserId(req: NextRequest): Promise<string> 
         set() {},
         remove() {},
       },
-      global: {
-        headers: {
-          Authorization: `Bearer ${authToken}`
-        }
-      }
     }
   );
 
+  // Get the user from the session (stored in cookies)
   const { data: { user }, error } = await supabase.auth.getUser();
 
   if (error || !user) {

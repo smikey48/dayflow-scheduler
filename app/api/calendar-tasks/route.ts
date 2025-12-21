@@ -53,6 +53,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: existingError.message }, { status: 500 });
     }
     console.log(`[calendar-tasks API] Fetched ${existingTasks?.length || 0} existing tasks`);
+    existingTasks?.forEach(t => {
+      console.log(`  Existing: ${t.title}, date: ${t.local_date}, start: ${t.start_time}`);
+    });
 
     // Also fetch ALL scheduled tasks (including deleted) to check against when generating future instances
     const { data: allScheduledTasks, error: allScheduledError } = await supabase
@@ -164,6 +167,14 @@ export async function GET(request: NextRequest) {
           // Database uses 0=Monday, 1=Tuesday, 2=Wednesday, ..., 6=Sunday
           if (repeatDays && Array.isArray(repeatDays) && repeatDays.length > 0) {
             shouldInclude = repeatDays.includes(dbDayOfWeek);
+            // If template has a reference date, only include if current date is on or after that date
+            if (shouldInclude && templateRefDate) {
+              const refDate = new Date(templateRefDate);
+              refDate.setHours(0, 0, 0, 0);
+              const checkDate = new Date(currentDate);
+              checkDate.setHours(0, 0, 0, 0);
+              shouldInclude = checkDate >= refDate;
+            }
           } else if (templateRefDate) {
             // Fall back to template's original day of week
             const templateJsDayOfWeek = templateRefDate.getDay();

@@ -12,6 +12,8 @@ export async function POST(request: NextRequest) {
     
     const body = await request.json();
     const { taskId, templateId, newDate, newTime, moveType, oldDate, startTime, endTime, isAppointment, isRoutine, isFutureInstance, title, description } = body;
+    
+    console.log('[move-appointment] Request:', { title, oldDate, newDate, moveType, isFutureInstance });
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -32,14 +34,17 @@ export async function POST(request: NextRequest) {
       : '09:00:00';
 
     if (moveType === 'single') {
+      console.log('[move-appointment] moveType is single');
       // Move single instance
       if (isFutureInstance) {
+        console.log('[move-appointment] isFutureInstance is true, templateId:', templateId);
         // This is a future instance generated from template - create new scheduled task for new date
         // and create a deletion record for the old date to prevent it from showing
         const newStartTime = `${newDate}T${formattedTime}`;
         const newEndTimeDate = new Date(`${newDate}T${formattedTime}`);
         newEndTimeDate.setMinutes(newEndTimeDate.getMinutes() + durationMinutes);
         const newEndTime = newEndTimeDate.toISOString();
+        console.log('[move-appointment] About to check/insert for newDate:', newDate, 'newStartTime:', newStartTime);
 
         // Check if a record already exists for this template on the new date
         const { data: existingTask } = await supabase
@@ -167,16 +172,26 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
       }
-    } else if (moveType === 'series') {
-      // Move entire series: update the template's date field and start_time
+    }
+    
+    if (moveType === 'series') {
+      console.log('[move-appointment] Series move - templateId:', templateId, 'oldDate:', oldDate, 'newDate:', newDate);
+      // Move entire series: update the template's repeat_days to reflect new day of week
       if (!templateId) {
         return NextResponse.json({ error: 'Template ID required for series move' }, { status: 400 });
       }
 
+      // Calculate the new day of week (0 = Monday in DB format)
+      const newDateObj = new Date(newDate);
+      const jsDay = newDateObj.getDay(); // 0 = Sunday in JS
+      const dbDay = jsDay === 0 ? 6 : jsDay - 1; // Convert to DB format: 0 = Monday, 6 = Sunday
+      
+      console.log('[move-appointment] New day calculation - JS day:', jsDay, 'DB day:', dbDay);
+
       const { error: updateError } = await supabase
         .from('task_templates')
         .update({
-          date: newDate,
+          repeat_days: [dbDay],
           start_time: formattedTime,
         })
         .eq('id', templateId)
@@ -186,6 +201,8 @@ export async function POST(request: NextRequest) {
         console.error('Error updating template:', updateError);
         return NextResponse.json({ error: updateError.message }, { status: 500 });
       }
+      
+      console.log('[move-appointment] Successfully updated template repeat_days to [' + dbDay + ']');
     }
 
     return NextResponse.json({ success: true });

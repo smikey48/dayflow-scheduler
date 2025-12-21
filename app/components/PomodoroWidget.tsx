@@ -92,7 +92,7 @@ export default function PomodoroWidget() {
       <button
         onClick={toggleVisibility}
         className="fixed bottom-4 right-4 w-12 h-12 rounded-full bg-gray-800 text-white shadow-lg hover:bg-gray-700 transition-all z-50 flex items-center justify-center text-xl"
-        title="Show Pomodoro Timer"
+        title="Show Pomodoro Timer - Work in focused 25-minute intervals with short breaks in between"
         data-pomodoro-instance={Math.random()}
       >
         🍅

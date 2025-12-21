@@ -1784,6 +1784,25 @@ def schedule_day(
     local_date = today_tz_aware.date()
     local_date_str = local_date.isoformat()
 
+    # Fetch existing scheduled_tasks to preserve their descriptions (notes)
+    existing_notes = {}
+    try:
+        existing_resp = supabase.table("scheduled_tasks") \
+            .select("template_id, description") \
+            .eq("user_id", user_id) \
+            .eq("local_date", local_date_str) \
+            .execute()
+        if existing_resp.data:
+            for task in existing_resp.data:
+                tid = task.get("template_id")
+                desc = task.get("description")
+                if tid and desc:
+                    existing_notes[str(tid)] = desc
+            if existing_notes:
+                print(f"schedule_day: Preserving notes for {len(existing_notes)} task(s)")
+    except Exception as e:
+        print(f"schedule_day: Warning - failed to fetch existing notes: {e}")
+
     # Build candidate rows from the computed schedule
     # Separate existing tasks (with id but no/invalid template_id) from new tasks
     candidate_rows = []
@@ -1826,7 +1845,11 @@ def schedule_day(
             dur = int(row_dict.get("duration_minutes")) if row_dict.get("duration_minutes") is not None else None
         except Exception:
             dur = None
-        candidate_rows.append({
+        
+        # Preserve description (notes) if it exists for this template_id
+        preserved_description = existing_notes.get(str(template_id))
+        
+        row_data = {
             "user_id": user_id,
             "local_date": local_date_str,
             "template_id": str(template_id),
@@ -1840,11 +1863,13 @@ def schedule_day(
             "is_routine": bool(row_dict.get("is_routine")),
             "is_fixed": bool(row_dict.get("is_fixed")),
             "priority": _normalize_priority(row_dict.get("priority")),
-        })
-
-
-
-    # Early exit if nothing to write
+        }
+        
+        # Only include description if we have one to preserve (don't overwrite with None)
+        if preserved_description is not None:
+            row_data["description"] = preserved_description
+        
+        candidate_rows.append(row_data)    # Early exit if nothing to write
     if not candidate_rows:
         print("schedule_day: no candidate rows to upsert.")
         return full_schedule_df
@@ -1973,10 +1998,17 @@ def schedule_day(
                 template_id = _row_template_id(task.to_dict() if hasattr(task, 'to_dict') else task)
                 if not template_id:
                     continue
-                    
-                # Calculate window for explanation
-                allowed_start, allowed_end = _allowed_range_for_task(day_start, day_end, task)
-                explanation = f"No available time slot within window [{allowed_start.strftime('%H:%M')}–{allowed_end.strftime('%H:%M')}]"
+                
+                # Check if there's an existing note/explanation to preserve
+                existing_explanation = existing_notes.get(str(template_id))
+                
+                # Only generate new explanation if there isn't already one
+                if not existing_explanation:
+                    # Calculate window for explanation
+                    allowed_start, allowed_end = _allowed_range_for_task(day_start, day_end, task)
+                    explanation = f"No available time slot within window [{allowed_start.strftime('%H:%M')}–{allowed_end.strftime('%H:%M')}]"
+                else:
+                    explanation = existing_explanation
                 
                 name = task.get("title") or task.get("task", "Unnamed")
                 duration = task.get("duration_minutes", 0)

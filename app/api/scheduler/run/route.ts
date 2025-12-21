@@ -12,8 +12,11 @@ function formatDateYYYYMMDD(d: Date): string {
 
 export async function POST(req: Request) {
   try {
+    console.log('[scheduler/run] Request received');
+    
     // Get authenticated user
     const userId = await getAuthenticatedUserId(req as any);
+    console.log('[scheduler/run] Authenticated user:', userId);
     
     // Read inputs (optional). Default to today's date in server local time.
     const body = await req.json().catch(() => ({}));
@@ -27,7 +30,10 @@ export async function POST(req: Request) {
     const pythonExe = process.env.PYTHON_EXE || "python";
     const schedulerWorkdir = process.env.SCHEDULER_WORKDIR;
 
+    console.log('[scheduler/run] Config:', { pythonExe, schedulerWorkdir, date, force, write });
+
     if (!schedulerWorkdir) {
+      console.error('[scheduler/run] Missing SCHEDULER_WORKDIR');
       return NextResponse.json(
         { ok: false, error: "Missing SCHEDULER_WORKDIR in server env." },
         { status: 500 }
@@ -36,6 +42,7 @@ export async function POST(req: Request) {
 
     // Sanity: ensure service key is present (we DO NOT return it)
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('[scheduler/run] Missing SUPABASE_SERVICE_ROLE_KEY');
       return NextResponse.json(
         { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY on server." },
         { status: 500 }
@@ -50,6 +57,8 @@ export async function POST(req: Request) {
     if (write) {
     args.push("--write");
     }
+
+    console.log('[scheduler/run] Spawning:', pythonExe, args.join(' '));
 
     // Spawn the Python scheduler with inherited server env (includes service key)
     const child = spawn(pythonExe, args, {
@@ -84,6 +93,12 @@ export async function POST(req: Request) {
     clearTimeout(timer);
 
     const ok = exitCode === 0;
+
+    console.log('[scheduler/run] Exit code:', exitCode);
+    if (!ok) {
+      console.error('[scheduler/run] stderr:', stderr);
+      console.error('[scheduler/run] stdout:', stdout);
+    }
 
     return NextResponse.json({
       ok,

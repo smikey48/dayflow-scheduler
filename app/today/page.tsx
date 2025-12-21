@@ -136,6 +136,7 @@ const [editModalRepeatUnit, setEditModalRepeatUnit] = useState<string>('none');
 const [editModalTaskType, setEditModalTaskType] = useState<string>('floating');
 const [editModalStartTime, setEditModalStartTime] = useState<string>('');
 const [editModalDuration, setEditModalDuration] = useState<number>(30);
+const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
 
   // Sync modal state when editingTask changes
   useEffect(() => {
@@ -170,13 +171,14 @@ const [editModalDuration, setEditModalDuration] = useState<number>(30);
         return false;
       }
       
-      console.log('[runScheduler] Calling /api/revise-schedule...');
-      const response = await fetch('/api/revise-schedule', {
+      console.log('[runScheduler] Calling /api/scheduler/run...');
+      const response = await fetch('/api/scheduler/run', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
+        body: JSON.stringify({ force: true, write: true }),
       });
       
       if (!response.ok) {
@@ -249,13 +251,11 @@ const [editModalDuration, setEditModalDuration] = useState<number>(30);
       console.log(`[loadToday] Fetched ${allScheduledTasks?.length || 0} total scheduled task references`);
     }
 
-    // Also fetch recurring appointment templates that should appear today
-    // (both one-off appointments with specific dates AND recurring appointments)
+    // Also fetch recurring templates (appointments, routines, floating tasks) that should appear today
     const { data: allTemplates, error: templateError } = await supabase
       .from('task_templates')
       .select('*')
-      .eq('is_deleted', false)
-      .eq('is_appointment', true);
+      .eq('is_deleted', false);
 
     if (templateError) {
       console.error('[loadToday] template appointments query failed:', {
@@ -819,6 +819,23 @@ async function completeTask(scheduledTaskId: string) {
     };
   }, []);
 
+  // ⬇️ Close nav menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showNavMenu) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.nav-menu-container')) {
+          setShowNavMenu(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showNavMenu]);
+
   // ⬇️ update priority (1..5), then reload
   // Update priority for a given row (optimistic UI + persist to either template or scheduled_tasks)
   async function updatePriorityForRow(row: Row, next: number): Promise<boolean> {
@@ -1139,9 +1156,49 @@ async function completeTask(scheduledTaskId: string) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </a>
-          <div>
-            <h1 className="text-2xl font-bold">Today</h1>
-            {authUid && <p className="text-xs text-gray-400 mt-1">User: {authUid}</p>}
+          <div className="flex items-center gap-2">
+            <div>
+              <h1 className="text-2xl font-bold">Today</h1>
+            </div>
+            <div className="relative nav-menu-container">
+              <button
+                onClick={() => setShowNavMenu(!showNavMenu)}
+                className="text-gray-600 hover:text-gray-900 transition-colors p-1"
+                title="Navigate to other pages"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
+              </button>
+              {showNavMenu && (
+                <div className="absolute left-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                  <a
+                    href="/appointments"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Appointments
+                  </a>
+                  <a
+                    href="/tasks"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Create Tasks
+                  </a>
+                  <a
+                    href="/routines"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Routines
+                  </a>
+                  <a
+                    href="/projects"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Projects
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-3">

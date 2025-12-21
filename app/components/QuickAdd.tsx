@@ -43,7 +43,7 @@ export function QuickAdd({ userId, onAdded }: Props) {
   const [windowStart, setWindowStart] = useState<string>(''); // e.g., "13:00"
   const [windowEnd, setWindowEnd] = useState<string>('');     // e.g., "17:30"
   const isHHMM = (s: string) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(s);
-  const windowDisabled = type === 'appointment'; // windows apply to floating/routine, not appointments
+  const windowDisabled = type !== 'floating'; // windows apply only to floating tasks
 
   // UX
   const [busy, setBusy] = useState(false);
@@ -445,20 +445,21 @@ export function QuickAdd({ userId, onAdded }: Props) {
             )}
           </div>
 
-          {/* Start time (needed for appointment; optional for routine) */}
-          <div>
-            <label className="block text-sm mb-1">Start time</label>
-            <input
-              type="time"
-              className="w-full border rounded px-2 py-1"
-              value={startTime}
-              onChange={(e) => {
-                setStartTime(e.target.value);
-                setErr(null);
-              }}
-            />
-
-          </div>
+          {/* Start time (needed for routine and appointment only) */}
+          {(type === 'routine' || type === 'appointment') && (
+            <div>
+              <label className="block text-sm mb-1">Start time</label>
+              <input
+                type="time"
+                className="w-full border rounded px-2 py-1"
+                value={startTime}
+                onChange={(e) => {
+                  setStartTime(e.target.value);
+                  setErr(null);
+                }}
+              />
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <label htmlFor="priority" className="w-36">Priority (1=high)</label>
@@ -493,38 +494,39 @@ export function QuickAdd({ userId, onAdded }: Props) {
           </div>
         </div>
 
-                {/* NEW: Optional scheduling window (applies to floating/routine) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm mb-1">Window start (HH:MM)</label>
-            <input
-              type="time"
-              className="w-full border rounded px-2 py-1"
-              value={windowStart}
-              onChange={(e) => {
-                setWindowStart(e.target.value);
-                setErr(null);
-              }}
-
-              disabled={windowDisabled}
-              placeholder="13:00"
-            />
-          </div>
-          <div>
-            <label className="block text-sm mb-1">Window end (HH:MM)</label>
-            <input
-              type="time"
-              className="w-full border rounded px-2 py-1"
-              value={windowEnd}
-              onChange={(e) => setWindowEnd(e.target.value)}
-              disabled={windowDisabled}
-              placeholder="17:30"
-            />
-          </div>
-        </div>
-        <p className="text-xs text-gray-600">
-          Optional. If set, this task will only be scheduled within this range.
-        </p>
+        {/* NEW: Optional scheduling window (applies only to floating tasks) */}
+        {type === 'floating' && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Window start (HH:MM)</label>
+                <input
+                  type="time"
+                  className="w-full border rounded px-2 py-1"
+                  value={windowStart}
+                  onChange={(e) => {
+                    setWindowStart(e.target.value);
+                    setErr(null);
+                  }}
+                  placeholder="13:00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Window end (HH:MM)</label>
+                <input
+                  type="time"
+                  className="w-full border rounded px-2 py-1"
+                  value={windowEnd}
+                  onChange={(e) => setWindowEnd(e.target.value)}
+                  placeholder="17:30"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-600">
+              Optional. If set, this task will only be scheduled within this range.
+            </p>
+          </>
+        )}
 
         {/* Submit */}
         <div className="flex items-center gap-2">

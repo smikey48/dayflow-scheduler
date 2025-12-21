@@ -113,6 +113,7 @@ export default function Calendar() {
         apiUrl,
         {
           cache: 'no-store',
+          credentials: 'include',
           headers: {
             'Cache-Control': 'no-cache',
           },
@@ -156,7 +157,7 @@ export default function Calendar() {
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, []);
+  }, [fetchTasks]);
 
   // Listen for schedule recreation events from other components (e.g., Today view)
   useEffect(() => {
@@ -525,6 +526,60 @@ export default function Calendar() {
     }
   };
 
+  const handleSkipOccurrence = async () => {
+    if (!selectedTask) return;
+
+    if (!window.confirm(`Skip this occurrence of "${selectedTask.title}" on ${new Date(selectedTask.local_date).toLocaleDateString('en-GB')}?`)) {
+      return;
+    }
+
+    try {
+      const supabase = supabaseBrowser();
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+
+      if (!userId) {
+        alert('Please sign in to skip appointments');
+        return;
+      }
+
+      if (selectedTask.is_future_instance) {
+        // This is a future instance - create a deleted record to prevent it from showing
+        const { error } = await supabase
+          .from('scheduled_tasks')
+          .insert({
+            template_id: selectedTask.template_id,
+            user_id: userId,
+            title: selectedTask.title,
+            description: selectedTask.description,
+            local_date: selectedTask.local_date,
+            start_time: selectedTask.start_time,
+            end_time: selectedTask.end_time,
+            is_appointment: selectedTask.is_appointment,
+            is_routine: selectedTask.is_routine,
+            is_deleted: true,
+            is_completed: false,
+          });
+
+        if (error) throw error;
+      } else {
+        // This is an existing scheduled task - soft delete it
+        const { error } = await supabase
+          .from('scheduled_tasks')
+          .update({ is_deleted: true })
+          .eq('id', selectedTask.id);
+
+        if (error) throw error;
+      }
+
+      // Refresh tasks
+      await fetchTasks();
+      setSelectedTask(null);
+    } catch (error: any) {
+      console.error('Error skipping occurrence:', error);
+      alert(error.message || 'Failed to skip occurrence');
+    }
+  };
+
   return (
     <div className="mt-8 rounded-2xl border p-6 w-full">
       {/* Header */}
@@ -876,6 +931,15 @@ export default function Calendar() {
                   >
                     Delete
                   </button>
+                  {selectedTask.template_id && (
+                    <button
+                      onClick={handleSkipOccurrence}
+                      className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium"
+                      title="Skip this occurrence only"
+                    >
+                      Skip
+                    </button>
+                  )}
                   <button
                     onClick={() => setEditMode(true)}
                     className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium"
