@@ -259,7 +259,7 @@ export function QuickAdd({ userId, onAdded }: Props) {
       if (isAppointmentForToday) {
         console.log('Appointment added for today - triggering reschedule');
         try {
-          const rescheduleRes = await fetch('/api/scheduler/run', {
+          const rescheduleRes = await fetch('/api/revise-schedule', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ date: dateStr, force: true })

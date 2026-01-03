@@ -479,6 +479,7 @@ export default function Calendar() {
       } else {
         // Delete entire series - soft delete the template
         if (selectedTask.template_id) {
+          console.log(`[AUDIT] Calendar deleting template series: ${selected Task.template_id} - "${selectedTask.title}" at ${new Date().toISOString()}`);
           const { error } = await supabase
             .from('task_templates')
             .update({ is_deleted: true })

@@ -3,6 +3,7 @@
 import { QuickAdd } from '../components/QuickAdd';
 import { supabaseBrowser } from '../../lib/supabaseBrowser';
 import { useEffect, useState } from 'react';
+import FeedbackButton from '../components/FeedbackButton';
 
 export default function TasksPage() {
   const [userId, setUserId] = useState<string | null>(null);
@@ -25,6 +26,8 @@ export default function TasksPage() {
 
   return (
     <main className="min-h-screen bg-gray-50">
+      <FeedbackButton page="Create Tasks" />
+      
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">

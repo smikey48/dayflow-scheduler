@@ -11,6 +11,7 @@ import { ThemeSupa } from '@supabase/auth-ui-shared';
 import Recorder from "./components/voice/Recorder";
 import Calendar from "./components/Calendar";
 import DailyAdhdTip from "./components/DailyAdhdTip";
+import FeedbackButton from "./components/FeedbackButton";
 
 // ---- Supabase client (module scope) ----
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -177,6 +178,8 @@ export default function Home() {
   // --- signed-in view: landing page ---
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <FeedbackButton page="Landing Page" />
+      
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-end">

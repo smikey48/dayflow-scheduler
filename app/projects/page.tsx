@@ -1,18 +1,17 @@
 'use client';
 
 import ProjectPlanner from '../components/ProjectPlanner';
-import { useState } from 'react';
+import FeedbackButton from '../components/FeedbackButton';
 
 export default function ProjectsPage() {
-  const [refreshKey, setRefreshKey] = useState(0);
-
   const handleProjectSuccess = () => {
-    // Trigger any refresh logic if needed
-    setRefreshKey(prev => prev + 1);
+    // Don't remount component - let ProjectPlanner handle its own state
   };
 
   return (
     <main className="min-h-screen bg-gray-50">
+      <FeedbackButton page="Projects" />
+      
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -37,7 +36,7 @@ export default function ProjectsPage() {
       {/* Project Planner */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="bg-white rounded-2xl shadow-sm border p-6">
-          <ProjectPlanner key={refreshKey} onSuccess={handleProjectSuccess} />
+          <ProjectPlanner onSuccess={handleProjectSuccess} />
         </div>
       </div>
     </main>

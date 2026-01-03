@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase/client';
 import Calendar from '../components/Calendar';
 import { QuickAdd } from '../components/QuickAdd';
+import FeedbackButton from '../components/FeedbackButton';
 
 export default function AppointmentsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -23,6 +24,8 @@ export default function AppointmentsPage() {
 
   return (
     <main className="min-h-screen bg-gray-50">
+      <FeedbackButton page="Appointments" />
+      
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">

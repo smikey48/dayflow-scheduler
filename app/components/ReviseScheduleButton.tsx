@@ -23,7 +23,7 @@ export default function ReviseScheduleButton({ onSuccess }: { onSuccess?: () => 
       const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes
 
       console.log('[ReviseSchedule] Starting request...');
-      const res = await fetch("/api/scheduler/run", {
+      const res = await fetch("/api/revise-schedule", {
         method: "POST",
         headers: { 
           'Content-Type': 'application/json',

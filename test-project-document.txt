@@ -1,0 +1,51 @@
+PROJECT SPECIFICATION: Mobile Habit Tracker App
+
+OVERVIEW:
+Build a mobile application for tracking daily habits with streak tracking, reminders, and progress visualization.
+
+CORE FEATURES:
+1. User Authentication
+   - Email/password login
+   - Google/Apple sign-in integration
+   - Password recovery
+
+2. Habit Management
+   - Create custom habits with names, descriptions, and goals
+   - Set frequency (daily, weekly, custom days)
+   - Archive/delete habits
+   - Reorder habits by drag and drop
+
+3. Daily Tracking
+   - Simple check-in interface
+   - Mark habits as complete with single tap
+   - View today's pending habits
+   - Quick note on why missed (optional)
+
+4. Progress & Analytics
+   - Current streak counter
+   - Best streak record
+   - Monthly calendar view with completion dots
+   - Completion percentage over time
+   - Weekly summary report
+
+5. Reminders & Notifications
+   - Customizable reminder times for each habit
+   - Daily summary notification
+   - Streak milestone celebrations
+
+TECHNICAL REQUIREMENTS:
+- Cross-platform (iOS and Android)
+- Offline-first with sync capability
+- Data backup to cloud
+- Dark mode support
+- Accessibility features (screen reader support)
+
+TARGET USERS:
+- People building new positive habits
+- Those recovering from habit lapses
+- Users who need accountability and visual progress
+
+SUCCESS METRICS:
+- 7-day retention > 40%
+- Average daily active habits: 3-5
+- Time to first habit creation < 2 minutes

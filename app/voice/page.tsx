@@ -1,9 +1,11 @@
 // C:\Projects\dayflow-ui\dayflow2-gui\app\voice\page.tsx
 import Recorder from "../components/voice/Recorder";
+import FeedbackButton from "../components/FeedbackButton";
 
 export default function VoicePage() {
   return (
     <main className="mx-auto max-w-2xl p-6 space-y-6">
+      <FeedbackButton page="Voice Input" />
       <div className="flex items-center gap-4">
         <a 
           href="/"

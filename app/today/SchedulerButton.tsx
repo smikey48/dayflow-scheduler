@@ -18,7 +18,7 @@ export default function SchedulerButton() {
         write: true,
       };
 
-      const res = await fetch("/api/scheduler/run", {
+      const res = await fetch("/api/revise-schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

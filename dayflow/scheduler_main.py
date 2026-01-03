@@ -17,6 +17,7 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
       - Repeats (daily/weekly/monthly) → carry forward only if NOT already present today
     Only applies to floating (non-appointment, non-routine), and not deleted/completed.
     IMPORTANT: Skip any task whose template is soft-deleted (task_templates.is_deleted = true).
+    IMPORTANT: Skip any task that was explicitly deleted/skipped today (scheduled_tasks.is_deleted = true).
     """
     if supabase is None:
         print("[carry_forward] Skipped (no Supabase client).")
@@ -46,17 +47,21 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
         return 0
 
     t_resp = supabase.table("task_templates").select(
-        "id, is_deleted, repeat_unit, repeat, repeat_interval, repeat_days, priority"
+        "id, is_deleted, repeat_unit, repeat, repeat_interval, repeat_days, priority, date"
     ).in_("id", template_ids).execute()
     t_rows = t_resp.data or []
     t_by_id = {t["id"]: t for t in t_rows}
 
     # 3) Build a set of today's already-present template_ids to avoid dupes for repeats
     # Also fetch which ones have times to avoid overwriting scheduled tasks
-    today_resp = supabase.table("scheduled_tasks").select("template_id, start_time")\
+    today_resp = supabase.table("scheduled_tasks").select("template_id, start_time, is_deleted")\
         .eq("local_date", today).execute()
     todays_templates = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id")}
     todays_scheduled = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id") and r.get("start_time")}
+    todays_deleted = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id") and r.get("is_deleted")}
+    
+    if todays_deleted:
+        print(f"[carry_forward] Found {len(todays_deleted)} deleted/skipped task(s) today - will not carry forward.")
 
     to_insert: list[dict] = []
     for r in y_rows:
@@ -69,6 +74,10 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
         if tmeta.get("is_deleted") is True:
             continue
 
+        # **Skip** if this task was deleted/skipped today (user explicitly skipped it)
+        if tid in todays_deleted:
+            continue
+
         # Skip if already scheduled today with a time (don't overwrite the scheduler's work)
         if tid in todays_scheduled:
             continue
@@ -77,7 +86,19 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
         unit = (tmeta.get("repeat") or tmeta.get("repeat_unit") or "none").lower()
 
         if unit == "none":
-            # one-off → always carry forward
+            # one-off → check defer date before carrying forward
+            defer_date = tmeta.get("date")
+            if defer_date:
+                # Parse defer date and compare with today
+                try:
+                    from datetime import datetime
+                    defer_dt = datetime.fromisoformat(defer_date).date()
+                    if defer_dt > run_date:
+                        print(f"[carry_forward] Skipping '{r['title']}' - deferred until {defer_date}")
+                        continue
+                except (ValueError, TypeError) as e:
+                    print(f"[carry_forward] Warning: invalid defer date '{defer_date}' for '{r['title']}': {e}")
+            # If no defer date or defer date has passed, carry forward
             pass
         else:
             # repeating → only if not already present today
@@ -434,13 +455,16 @@ def main() -> int:
     # 1b) NEW: if the user deleted a task today, do NOT re-instantiate it on revise
     if sb is not None:
         today_str = run_date.isoformat()
-        q = sb.table("scheduled_tasks").select("template_id").eq("local_date", today_str).eq("is_deleted", True)
+        q = sb.table("scheduled_tasks").select("template_id, title").eq("local_date", today_str).eq("is_deleted", True)
         # If you're running single-user in dev, also filter by user:
         if args.user:
             q = q.eq("user_id", args.user)
         resp = q.execute()
         deleted_today_ids = {r["template_id"] for r in (resp.data or []) if r.get("template_id")}
         if deleted_today_ids:
+            # Log which tasks are being filtered out
+            deleted_titles = [r.get("title", "Untitled") for r in (resp.data or []) if r.get("template_id") in deleted_today_ids]
+            logging.info("Found %d deleted/skipped task(s) today: %s", len(deleted_today_ids), ", ".join(deleted_titles[:5]))
             before = len(instances) if hasattr(instances, "__len__") else 0
             instances = [it for it in (instances or []) if it.get("template_id") not in deleted_today_ids]
             after = len(instances)
@@ -483,6 +507,97 @@ def main() -> int:
 
     # 3) Build DataFrame for the scheduler
     tasks_df = pd.DataFrame(instances or [])
+    
+    # 3b) Fetch existing scheduled tasks for today that lack time slots (e.g., carried forward)
+    # and add them to tasks_df so they can be scheduled
+    if sb is not None and args.user:
+        try:
+            today_str = run_date.isoformat()
+            existing_resp = sb.table("scheduled_tasks").select("*") \
+                .eq("user_id", args.user) \
+                .eq("local_date", today_str) \
+                .is_("start_time", "null") \
+                .eq("is_deleted", False) \
+                .eq("is_completed", False) \
+                .execute()
+            
+            existing_unscheduled = existing_resp.data or []
+            if existing_unscheduled:
+                logging.info("Found %d existing unscheduled task(s) for %s - adding to scheduler", 
+                           len(existing_unscheduled), today_str)
+                
+                # Only add tasks that are NOT already in instances (avoid duplicates)
+                # Check by template_id
+                existing_template_ids = {str(inst.get("template_id")) for inst in instances if inst.get("template_id")}
+                new_tasks = [task for task in existing_unscheduled 
+                           if str(task.get("template_id")) not in existing_template_ids]
+                
+                if new_tasks:
+                    logging.info("Adding %d unique unscheduled tasks (filtered out %d duplicates)", 
+                               len(new_tasks), len(existing_unscheduled) - len(new_tasks))
+                    # Convert to DataFrame and append
+                    existing_df = pd.DataFrame(new_tasks)
+                    if not tasks_df.empty:
+                        tasks_df = pd.concat([tasks_df, existing_df], ignore_index=True)
+                    else:
+                        tasks_df = existing_df
+                else:
+                    logging.info("All %d unscheduled tasks are already in instances - skipping", 
+                               len(existing_unscheduled))
+        except Exception as e:
+            logging.warning("Failed to fetch existing unscheduled tasks: %s", e)
+
+    # 3c) Check for deferred tasks that should not be scheduled today
+    if not effective_dry_run:
+        try:
+            # Fetch all scheduled tasks for today (including ones with time slots)
+            all_today_resp = sb.table("scheduled_tasks") \
+                .select("id, template_id, title") \
+                .eq("user_id", args.user) \
+                .eq("local_date", today_str) \
+                .eq("is_completed", False) \
+                .eq("is_deleted", False) \
+                .execute()
+            
+            all_today_tasks = all_today_resp.data or []
+            if all_today_tasks:
+                # Get unique template IDs
+                template_ids = {task["template_id"] for task in all_today_tasks if task.get("template_id")}
+                
+                if template_ids:
+                    # Fetch templates to check defer dates
+                    templates_resp = sb.table("task_templates") \
+                        .select("id, title, date, repeat_unit") \
+                        .in_("id", list(template_ids)) \
+                        .execute()
+                    
+                    # Build map of template_id -> defer_date for one-off tasks
+                    deferred_templates = {}
+                    for tmpl in (templates_resp.data or []):
+                        if tmpl.get("repeat_unit") == "none" and tmpl.get("date"):
+                            try:
+                                defer_date = datetime.fromisoformat(tmpl["date"]).date()
+                                if defer_date > run_date:
+                                    deferred_templates[tmpl["id"]] = (tmpl.get("title"), defer_date)
+                            except Exception:
+                                pass
+                    
+                    # Delete tasks that should be deferred
+                    if deferred_templates:
+                        tasks_to_delete = [
+                            task["id"] for task in all_today_tasks 
+                            if task.get("template_id") in deferred_templates
+                        ]
+                        
+                        if tasks_to_delete:
+                            for tmpl_id, (title, defer_date) in deferred_templates.items():
+                                logging.info("Removing deferred task '%s' from today's schedule (deferred until %s)", 
+                                           title, defer_date)
+                            
+                            sb.table("scheduled_tasks").delete().in_("id", tasks_to_delete).execute()
+                            logging.info("Removed %d deferred task(s) from today's schedule", len(tasks_to_delete))
+        except Exception as e:
+            logging.warning("Failed to check/remove deferred tasks: %s", e)
 
     # 4) Run the scheduler (this function should be the only writer to scheduled_tasks)
     schedule = schedule_day(

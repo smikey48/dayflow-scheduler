@@ -3,6 +3,8 @@
 
 import React, { useEffect, useState, useRef} from 'react';
 import { supabaseBrowser } from '../../lib/supabaseBrowser';
+import { useRouter } from 'next/navigation';
+import FeedbackButton from '../components/FeedbackButton';
 
 // (PriorityBadge removed - priority will be shown inline to the right of the title)
 
@@ -128,6 +130,7 @@ function Badge(props: { children: React.ReactNode }) {
 }
 import ReviseScheduleButton from '../components/ReviseScheduleButton';
 export default function TodayPage() {
+const router = useRouter();
 const [authUid, setAuthUid] = useState<string | null>(null);
 const [rows, setRows] = useState<Row[] | null>(null);
 const [error, setError] = useState<string | null>(null);
@@ -136,6 +139,7 @@ const [editModalRepeatUnit, setEditModalRepeatUnit] = useState<string>('none');
 const [editModalTaskType, setEditModalTaskType] = useState<string>('floating');
 const [editModalStartTime, setEditModalStartTime] = useState<string>('');
 const [editModalDuration, setEditModalDuration] = useState<number>(30);
+const [editModalDate, setEditModalDate] = useState<string>('');
 const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
 
   // Sync modal state when editingTask changes
@@ -157,6 +161,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
       }
       
       setEditModalDuration(editingTask.duration_minutes || 30);
+      setEditModalDate(editingTask.date || '');
     }
   }, [editingTask]);
 
@@ -171,8 +176,8 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         return false;
       }
       
-      console.log('[runScheduler] Calling /api/scheduler/run...');
-      const response = await fetch('/api/scheduler/run', {
+      console.log('[runScheduler] Calling /api/revise-schedule...');
+      const response = await fetch('/api/revise-schedule', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -451,6 +456,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         repeat_day: template.repeat_day || null,
         repeat: template.repeat || null,
         repeat_days: template.repeat_days || null,
+        date: template.date || null,
         window_start_local: template.window_start_local || null,
         window_end_local: template.window_end_local || null
       };
@@ -477,7 +483,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
       day: '2-digit'
     }).format(tomorrow);
     
-    // Get the current task details
+    // Get the current task details and its template
     const { data: currentTask, error: fetchError } = await supabase
       .from('scheduled_tasks')
       .select('*')
@@ -487,6 +493,48 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
     if (fetchError || !currentTask) {
       console.error('Skip to tomorrow failed: could not fetch task', fetchError);
       setError(`Skip to tomorrow failed: ${fetchError?.message || 'Task not found'}`);
+      return;
+    }
+
+    // Get the template to check if it's a one-off task
+    const { data: template, error: templateError } = await supabase
+      .from('task_templates')
+      .select('repeat_unit')
+      .eq('id', currentTask.template_id)
+      .single();
+
+    if (templateError) {
+      console.error('Skip to tomorrow failed: could not fetch template', templateError);
+      setError(`Skip to tomorrow failed: ${templateError.message}`);
+      return;
+    }
+
+    // If it's a one-off (floating) task, set the defer date on the template
+    if (template.repeat_unit === 'none') {
+      const { error: templateUpdateError } = await supabase
+        .from('task_templates')
+        .update({ date: tomorrowLocal })
+        .eq('id', currentTask.template_id);
+
+      if (templateUpdateError) {
+        console.error('Skip to tomorrow failed: could not update template defer date', templateUpdateError);
+        setError(`Skip to tomorrow failed: ${templateUpdateError.message}`);
+        return;
+      }
+
+      // For one-off tasks, just delete the scheduled instance - the scheduler will recreate it tomorrow
+      const { error: deleteError } = await supabase
+        .from('scheduled_tasks')
+        .delete()
+        .eq('id', scheduledTaskId);
+
+      if (deleteError) {
+        console.error('Failed to delete current task:', deleteError);
+        setError(`Failed to delete current task: ${deleteError.message}`);
+        return;
+      }
+
+      await loadToday();
       return;
     }
 
@@ -546,10 +594,22 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
   async function deleteTask(scheduledTaskId: string, deleteTemplate: boolean = true) {
     const supabase = supabaseBrowser();
     
+    // If deleting template (all future occurrences), confirm with user
+    if (deleteTemplate) {
+      const confirmed = window.confirm(
+        'This will DELETE ALL FUTURE OCCURRENCES of this task. Are you sure?\n\n' +
+        'Click OK to permanently delete, or Cancel to go back.\n\n' +
+        'Tip: Use "Skip" instead if you only want to skip today.'
+      );
+      if (!confirmed) return;
+    }
+    
     // Check if this is a template-sourced task (ID starts with "template-")
     if (scheduledTaskId.startsWith('template-')) {
       // Extract template ID
       const templateId = scheduledTaskId.replace('template-', '');
+      
+      console.log(`[AUDIT] Today page deleteTask deleting template: ${templateId} at ${new Date().toISOString()}`);
       
       // Soft-delete the template
       const { error: templateError } = await supabase
@@ -613,6 +673,15 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
   async function completeSeries(scheduledTaskId: string) {
     const supabase = supabaseBrowser();
     
+    // Confirm with user before permanently deleting recurring task
+    const confirmed = window.confirm(
+      'This will PERMANENTLY DELETE this recurring task.\n\n' +
+      'You will NOT see this task again in future schedules.\n\n' +
+      'Click OK to permanently delete, or Cancel to go back.\n\n' +
+      'Tip: Use the regular "✓" button if you just want to complete today\'s instance.'
+    );
+    if (!confirmed) return;
+    
     console.log(`[completeSeries] Starting series completion for task: ${scheduledTaskId}`);
     
     // First complete the current instance
@@ -622,6 +691,8 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
     if (scheduledTaskId.startsWith('template-')) {
       // Extract template ID
       const templateId = scheduledTaskId.replace('template-', '');
+      
+      console.log(`[AUDIT] Today page completeSeries deleting template: ${templateId} at ${new Date().toISOString()}`);
       
       const { error: templateError } = await supabase
         .from('task_templates')
@@ -649,6 +720,8 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
 
       // Soft-delete the template if it exists
       if (task?.template_id) {
+        console.log(`[AUDIT] Today page completeSeries deleting template: ${task.template_id} at ${new Date().toISOString()}`);
+        
         const { error: templateError } = await supabase
           .from('task_templates')
           .update({ is_deleted: true })
@@ -771,11 +844,13 @@ async function completeTask(scheduledTaskId: string) {
 
     (async () => {
       const { data: u, error: ue } = await supabase.auth.getUser();
-      if (ue) {
-        setError(`auth.getUser(): ${ue.message}`);
+      if (ue || !u.user) {
+        // No authenticated user - redirect to login
+        console.log('[Today] No authenticated user, redirecting to login');
+        router.push('/auth/login');
         return;
       }
-      setAuthUid(u.user ? u.user.id : null);
+      setAuthUid(u.user.id);
       
       // Check if we have any tasks for today
       const todayLocal = new Intl.DateTimeFormat('en-CA', { 
@@ -787,17 +862,32 @@ async function completeTask(scheduledTaskId: string) {
       
       const { data: existingTasks } = await supabase
         .from('scheduled_tasks')
-        .select('id')
+        .select('id, start_time, is_appointment, is_routine, is_fixed')
         .eq('local_date', todayLocal)
-        .eq('is_deleted', false)
-        .limit(1);
+        .eq('is_deleted', false);
       
-      // Only run scheduler if there are no tasks for today
-      if (!existingTasks || existingTasks.length === 0) {
-        console.log('[Today] No tasks found, running scheduler...');
+      // Run scheduler if:
+      // 1. No tasks exist for today, OR
+      // 2. Very few tasks (likely incomplete schedule), OR
+      // 3. There are floating tasks (not appointment/routine/fixed) without time slots
+      const hasFloatingWithoutTimes = (existingTasks || []).some(
+        task => !task.is_appointment && !task.is_routine && !task.is_fixed && !task.start_time
+      );
+      
+      const taskCount = existingTasks?.length || 0;
+      const needsScheduling = taskCount === 0 || taskCount < 5 || hasFloatingWithoutTimes;
+      
+      if (needsScheduling) {
+        console.log('[Today] Running scheduler...', { 
+          noTasks: taskCount === 0,
+          fewTasks: taskCount < 5,
+          hasFloatingWithoutTimes 
+        });
         await runScheduler();
+        // Wait a moment for the scheduler to complete and database to update
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } else {
-        console.log('[Today] Tasks already exist, skipping scheduler');
+        console.log('[Today] Schedule appears complete, skipping scheduler');
       }
       
       await loadToday();
@@ -1145,6 +1235,8 @@ async function completeTask(scheduledTaskId: string) {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6 space-y-8">
+      <FeedbackButton page="Today" />
+      
       <header className="flex items-end justify-between">
         <div className="flex items-center gap-4">
           <a 
@@ -1460,6 +1552,7 @@ async function completeTask(scheduledTaskId: string) {
               const duration_minutes = parseInt(formData.get('duration_minutes') as string) || null;
               const priority = parseInt(formData.get('priority') as string) || 3;
               const notes = (formData.get('notes') as string) || null;
+              const defer_date = (formData.get('defer_date') as string) || null;
               
               const body: any = { 
                 kind: task_type,
@@ -1477,9 +1570,15 @@ async function completeTask(scheduledTaskId: string) {
               } else {
                 // Explicitly clear repeat fields when changing to one-off
                 body.repeat_interval = 1;
-                body.date = null;
                 body.repeat_days = null;
                 body.day_of_month = null;
+                
+                // Set defer date for one-off floating tasks, otherwise clear it
+                if (task_type === 'floating' && defer_date) {
+                  body.date = defer_date;
+                } else {
+                  body.date = null;
+                }
               }
               
               // Add time field for appointments and routines
@@ -1491,6 +1590,7 @@ async function completeTask(scheduledTaskId: string) {
               if (duration_minutes) body.duration_minutes = duration_minutes;
 
               // Update the template
+              console.log('[Edit Task] Updating template with body:', body);
               const res = await fetch(`/api/task-templates/${editingTask.template_id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -1516,6 +1616,7 @@ async function completeTask(scheduledTaskId: string) {
                 setEditModalTaskType('floating');
                 setEditModalStartTime('');
                 setEditModalDuration(30);
+                setEditModalDate('');
                 // Force reload to ensure fresh data from template join
                 window.location.reload();
               } else {
@@ -1600,6 +1701,21 @@ async function completeTask(scheduledTaskId: string) {
                   </select>
                   <p className="text-xs text-gray-500 mt-1">Lower numbers are scheduled earlier</p>
                 </div>
+
+                {/* Defer date field for one-off floating tasks */}
+                {editModalRepeatUnit === 'none' && editModalTaskType === 'floating' && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Defer Until Date</label>
+                    <input 
+                      type="date" 
+                      name="defer_date"
+                      value={editModalDate}
+                      onChange={(e) => setEditModalDate(e.target.value)}
+                      className="w-full border rounded px-3 py-2"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Task will not be scheduled until this date</p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium mb-1">Repeat</label>
@@ -1693,6 +1809,7 @@ async function completeTask(scheduledTaskId: string) {
                     setEditModalTaskType('floating');
                     setEditModalStartTime('');
                     setEditModalDuration(30);
+                    setEditModalDate('');
                   }}
                   className="px-4 py-2 border rounded hover:bg-gray-50"
                 >

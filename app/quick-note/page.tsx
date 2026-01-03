@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { supabaseBrowser } from '@/lib/supabaseBrowser';
+import FeedbackButton from '../components/FeedbackButton';
 
 export default function QuickNotePage() {
   const [isRecording, setIsRecording] = useState(false);
@@ -119,6 +120,7 @@ export default function QuickNotePage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white p-4 flex flex-col items-center justify-center">
+      <FeedbackButton page="Quick Note" />
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
         <h1 className="text-3xl font-bold text-center mb-2 text-gray-800">
           Quick Voice Note

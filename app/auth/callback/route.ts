@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       const { data: betaUser, error: betaError } = await supabase
         .from('beta_users')
         .select('*')
-        .eq('email', user.email)
+        .eq('email', user.email?.toLowerCase())
         .single()
 
       if (betaError || !betaUser) {

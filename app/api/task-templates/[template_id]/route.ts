@@ -49,6 +49,7 @@ export async function PATCH(
   let body: PatchBody;
   try {
     body = (await req.json()) as PatchBody;
+    console.log('[PATCH task-templates] Request body:', JSON.stringify(body, null, 2));
   } catch {
     return NextResponse.json(
       { error_code: "invalid_json", error_message: "Invalid JSON body." },
@@ -143,13 +144,14 @@ export async function PATCH(
     
     // When changing to one-off (none), clear repeat-related fields
     // BUT: Keep date for appointments (they need it for one-off events)
+    // AND: Keep date if explicitly provided (for deferred floating tasks)
     if (body.repeat_unit === 'none') {
       updates.repeat_interval = 1;  // Set to 1 for consistency
       updates.repeat_days = null;    // Clear weekly days
       updates.repeat_day = null;     // Clear monthly day
-      // Only clear date for non-appointment tasks
-      // Appointments need a date even when repeat_unit is 'none'
-      if (!isAppointment) {
+      // Only clear date for non-appointment tasks when no date is provided
+      // This allows floating tasks to have a defer date
+      if (!isAppointment && typeof body.date === 'undefined') {
         updates.date = null;
       }
     }
@@ -184,7 +186,8 @@ export async function PATCH(
 
   if (typeof body.day_of_month !== "undefined") {
     if (body.day_of_month === null) {
-      updates.repeat_day = null;
+      updates.day_of_month = null;
+      updates.repeat_day = null;  // Keep both fields in sync
     } else {
       const day = Number(body.day_of_month);
       if (Number.isNaN(day) || !isFinite(day) || day < 1 || day > 31) {
@@ -193,14 +196,18 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      updates.repeat_day = Math.trunc(day);
+      const truncatedDay = Math.trunc(day);
+      updates.day_of_month = truncatedDay;
+      updates.repeat_day = truncatedDay;  // Keep both fields in sync for backward compatibility
     }
   }
 
   // Reference date for interval calculations
   if (typeof body.date !== "undefined") {
+    console.log('[PATCH task-templates] Processing date field:', body.date);
     if (body.date === null || body.date === '') {
       updates.date = null;
+      console.log('[PATCH task-templates] Setting date to null');
     } else {
       // Validate date format YYYY-MM-DD
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -211,7 +218,10 @@ export async function PATCH(
         );
       }
       updates.date = body.date;
+      console.log('[PATCH task-templates] Setting date to:', body.date);
     }
+  } else {
+    console.log('[PATCH task-templates] Date field not in request body');
   }
 
   if (Object.keys(updates).length === 0) {
@@ -223,6 +233,12 @@ export async function PATCH(
 
   // Update (also check user_id to ensure ownership)
   console.log(`[PATCH task-templates/${templateId}] Attempting update for user ${userId}:`, updates);
+  
+  // AUDIT LOG: Track any is_deleted changes
+  if ('is_deleted' in updates) {
+    console.log(`[AUDIT] Template ${templateId} is_deleted being set to ${updates.is_deleted} by user ${userId} at ${new Date().toISOString()}`);
+  }
+  
   const { data, error } = await supabase
     .from("task_templates")
     .update(updates)

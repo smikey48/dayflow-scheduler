@@ -3,6 +3,7 @@
 import { RoutineAdd } from '../components/RoutineAdd';
 import { supabaseBrowser } from '../../lib/supabaseBrowser';
 import { useEffect, useState } from 'react';
+import FeedbackButton from '../components/FeedbackButton';
 
 type Routine = {
   id: string;
@@ -229,6 +230,8 @@ export default function RoutinesPage() {
 
   return (
     <main className="min-h-screen bg-gray-50">
+      <FeedbackButton page="Routines" />
+      
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">

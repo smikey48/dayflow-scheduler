@@ -3,20 +3,57 @@
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { supabaseBrowser } from '@/lib/supabaseBrowser';
+import BetaDisclaimer from '../components/BetaDisclaimer';
+import FeedbackButton from '../components/FeedbackButton';
 
 export default function IntroductionPage() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(0); // Start at 0 for disclaimer
   const [userId, setUserId] = useState<string | null>(null);
+  const [hasAcceptedDisclaimer, setHasAcceptedDisclaimer] = useState(false);
   const totalSteps = 5;
 
   useEffect(() => {
     (async () => {
       const supabase = supabaseBrowser();
       const { data } = await supabase.auth.getSession();
-      setUserId(data.session?.user.id ?? null);
+      const currentUserId = data.session?.user.id ?? null;
+      setUserId(currentUserId);
+
+      // Check if user has already accepted disclaimer
+      if (currentUserId) {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('has_accepted_disclaimer')
+          .eq('id', currentUserId)
+          .single();
+
+        if (userData?.has_accepted_disclaimer) {
+          setHasAcceptedDisclaimer(true);
+          setCurrentStep(1); // Skip disclaimer, start with intro
+        }
+      }
     })();
   }, []);
+
+  const handleAcceptDisclaimer = async () => {
+    if (!userId) return;
+    
+    const supabase = supabaseBrowser();
+    await supabase
+      .from('users')
+      .update({ has_accepted_disclaimer: true })
+      .eq('id', userId);
+
+    setHasAcceptedDisclaimer(true);
+    setCurrentStep(1); // Move to first intro step
+  };
+
+  const handleDeclineDisclaimer = async () => {
+    const supabase = supabaseBrowser();
+    await supabase.auth.signOut();
+    router.push('/auth/login?message=You must accept the terms to use DayFlow');
+  };
 
   const markIntroComplete = async () => {
     if (!userId) return;
@@ -42,8 +79,20 @@ export default function IntroductionPage() {
     router.push('/today');
   };
 
+  // Show disclaimer if user hasn't accepted it yet
+  if (currentStep === 0 && !hasAcceptedDisclaimer) {
+    return (
+      <BetaDisclaimer 
+        onAccept={handleAcceptDisclaimer}
+        onDecline={handleDeclineDisclaimer}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <FeedbackButton page="Introduction" />
+      
       <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
         {/* Progress indicator */}
         <div className="flex justify-center mb-8">
