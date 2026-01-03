@@ -1,8 +1,14 @@
+[providers]
+python = "3.12.0"
+
 [phases.setup]
-nixPkgs = ["python312"]
+nixPkgs = ["python312", "pip"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+
+[phases.build]
+cmds = []
 
 [start]
 cmd = "python railway_server.py"
