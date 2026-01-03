@@ -30,8 +30,7 @@ export async function POST(request: NextRequest) {
     // Fetch all beta users
     const { data: betaUsers, error: fetchError } = await supabase
       .from('beta_users')
-      .select('email, name')
-      .eq('active', true); // Only email active beta users
+      .select('email, name');
 
     if (fetchError) {
       console.error('Error fetching beta users:', fetchError);
