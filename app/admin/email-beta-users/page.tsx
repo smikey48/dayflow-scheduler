@@ -33,7 +33,11 @@ export default function EmailBetaUsersPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to send emails');
+        // Show detailed error information
+        const errorMsg = data.details 
+          ? `${data.error}\n\nDetails: ${data.details}\nCode: ${data.code || 'N/A'}\nHint: ${data.hint || 'N/A'}`
+          : data.error || 'Failed to send emails';
+        throw new Error(errorMsg);
       }
 
       setResult(data);

@@ -30,12 +30,17 @@ export async function POST(request: NextRequest) {
     // Fetch all beta users
     const { data: betaUsers, error: fetchError } = await supabase
       .from('beta_users')
-      .select('email, name');
+      .select('email');
 
     if (fetchError) {
       console.error('Error fetching beta users:', fetchError);
       return NextResponse.json(
-        { error: 'Failed to fetch beta users' },
+        { 
+          error: 'Failed to fetch beta users', 
+          details: fetchError.message,
+          hint: fetchError.hint,
+          code: fetchError.code 
+        },
         { status: 500 }
       );
     }
@@ -93,8 +98,8 @@ export async function POST(request: NextRequest) {
           results.push({ email: user.email, id: result.id });
         }
 
-        // Rate limiting: wait 100ms between emails
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Rate limiting: wait 500ms between emails (max 2 per second)
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
         console.error(`Error sending to ${user.email}:`, error);
         errors.push({ email: user.email, error: String(error) });
