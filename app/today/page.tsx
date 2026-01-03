@@ -1554,6 +1554,12 @@ async function completeTask(scheduledTaskId: string) {
               const notes = (formData.get('notes') as string) || null;
               const defer_date = (formData.get('defer_date') as string) || null;
               
+              // Validation: Appointments and routines MUST have start time
+              if ((task_type === 'appointment' || task_type === 'routine') && !start_time) {
+                alert('Appointments and routines must have a start time');
+                return;
+              }
+              
               const body: any = { 
                 kind: task_type,
                 notes: notes,

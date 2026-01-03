@@ -508,6 +508,21 @@ def main() -> int:
     # 3) Build DataFrame for the scheduler
     tasks_df = pd.DataFrame(instances or [])
     
+    # 3a) **SAFETY**: Filter out appointments/routines without start times to prevent hangs
+    if not tasks_df.empty:
+        invalid_mask = (
+            (tasks_df.get('is_appointment', False) | tasks_df.get('is_routine', False)) & 
+            (tasks_df.get('start_time').isna() | (tasks_df.get('start_time') == ''))
+        )
+        invalid_count = invalid_mask.sum()
+        if invalid_count > 0:
+            invalid_tasks = tasks_df[invalid_mask][['title', 'template_id']].to_dict('records') if 'title' in tasks_df.columns else []
+            logging.warning("⚠️  Found %d appointment(s)/routine(s) WITHOUT start times - SKIPPING to prevent hang:", invalid_count)
+            for task in invalid_tasks[:5]:  # Show first 5
+                logging.warning("   - '%s' (template: %s)", task.get('title', 'Untitled'), task.get('template_id', 'unknown'))
+            tasks_df = tasks_df[~invalid_mask]
+            logging.info("Filtered DataFrame now has %d tasks (removed %d invalid)", len(tasks_df), invalid_count)
+    
     # 3b) Fetch existing scheduled tasks for today that lack time slots (e.g., carried forward)
     # and add them to tasks_df so they can be scheduled
     if sb is not None and args.user:
