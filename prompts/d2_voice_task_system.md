@@ -22,7 +22,7 @@ JSON SCHEMA (exact keys; keep order if possible)
   "start_time_local": "HH:MM",
   "end_time_local": "HH:MM",
   "duration_minutes": 0,
-  "repeat_unit": "none | daily | weekly | monthly",
+  "repeat_unit": "none | daily | weekly | monthly | annual",
   "repeat_interval": 1,
   "repeat_day": null,   // IMPORTANT: Must be a NUMBER (0-6), not a string like "1"
   "is_appointment": false,
@@ -45,6 +45,7 @@ MAPPING & DEFAULTS
   - "every day" → repeat_unit="daily", repeat_interval=1, repeat_day=null.
   - "every 2 weeks on Monday" → repeat_unit="weekly", repeat_interval=2, repeat_day=0 (Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6).
   - "on the 15th each month" → repeat_unit="monthly", repeat_interval=1, repeat_day=15.
+  - "every year" or "annual" → repeat_unit="annual", repeat_interval=1, use local_date to set the month/day of the year.
   - If user says "weekdays" (or multiple days) but only one repeat_day is supported, use repeat_unit="daily" and explain in confidence_notes.
 - Title: short, imperative label (e.g., “Call GP”, “Take meds”), max ~60 chars. **Never use generic placeholders like “Task” or “Floating task”. Prefer transcript-derived phrasing if unsure.**
 - Notes: put any extra user content that doesn’t map to fields.
@@ -93,3 +94,5 @@ User: “Every month on the 15th pay credit card.”
 
 User: “Weekdays 07:30 take meds for 5 minutes.”
 → JSON with floating routine, start_time_local "07:30", duration_minutes 5, repeat_unit "daily", explain 'weekdays' in confidence_notes.
+User: "Annual MOT on March 15th."
+→ JSON with floating task, repeat_unit "annual", local_date "YYYY-03-15" (current or next year), duration_minutes 25, repeat_interval 1.

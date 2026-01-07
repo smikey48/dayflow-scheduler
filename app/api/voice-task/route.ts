@@ -34,7 +34,7 @@ const VoiceTaskSchema = z.object({
   start_time_local: z.union([z.string().regex(/^\d{2}:\d{2}$/), z.null()]),
   end_time_local: z.union([z.string().regex(/^\d{2}:\d{2}$/), z.null()]),
   duration_minutes: z.coerce.number().int().min(0), // Coerce strings to numbers
-  repeat_unit: z.enum(["none", "daily", "weekly", "monthly"]),
+  repeat_unit: z.enum(["none", "daily", "weekly", "monthly", "annual"]),
   repeat_interval: z.coerce.number().int().min(1), // Coerce strings to numbers
   repeat_day: z.coerce.number().int().nullable(), // Coerce strings to numbers
   is_appointment: z.boolean(),
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
       kind, // "appointment" | "floating" | "routine"
 
       // repeat settings
-      repeat_unit: task.repeat_unit, // "none" | "daily" | "weekly" | "monthly"
+      repeat_unit: task.repeat_unit, // "none" | "daily" | "weekly" | "monthly" | "annual"
       repeat_interval: task.repeat_interval ?? 1,
       repeat_days:
         isWeekly && Number.isInteger(task.repeat_day) 

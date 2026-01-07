@@ -137,7 +137,7 @@ export default function IntroductionPage() {
                 </div>
                 <div className="flex items-center space-x-3">
                   <span className="text-2xl">🔄</span>
-                  <span className="text-gray-700"><strong>Recurring tasks:</strong> Daily, weekly, or monthly tasks that repeat</span>
+                  <span className="text-gray-700"><strong>Recurring tasks:</strong> Daily, weekly, monthly, or annual tasks that repeat</span>
                 </div>
                 <div className="flex items-center space-x-3">
                   <span className="text-2xl">⏰</span>

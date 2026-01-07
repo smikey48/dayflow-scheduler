@@ -18,7 +18,7 @@ function clampPriority(n: unknown) {
   return p;
 }
 type TaskType = 'floating' | 'routine' | 'appointment';
-type Repeat = 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly';
+type Repeat = 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly' | 'annual';
 
 export function QuickAdd({ userId, onAdded }: Props) {
   // Core fields
@@ -101,7 +101,7 @@ export function QuickAdd({ userId, onAdded }: Props) {
       kind,
 
       // repeat controls (set both repeat and repeat_unit for compatibility)
-      repeat,                     // 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly'
+      repeat,                     // 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly' | 'annual'
       repeat_unit: repeat,        // 🔑 CRITICAL: scheduler uses repeat_unit, not repeat
       repeat_interval: 1,
       active: true,
@@ -122,7 +122,8 @@ export function QuickAdd({ userId, onAdded }: Props) {
       // When repeat_interval > 1, scheduler uses this date to calculate when task is due
       // E.g., biweekly task with date=2025-11-10 will be due Nov 10, Nov 24, Dec 8, etc.
       // Always include for appointments (constraint + clarity) and interval > 1 tasks
-      if (kind === 'appointment' || repeatInterval > 1 || repeat === 'monthly') {
+      // Annual repeats MUST have a reference date for month/day matching
+      if (kind === 'appointment' || repeatInterval > 1 || repeat === 'monthly' || repeat === 'annual') {
         payload.date = dateStr || todayYmd();
       }
 
@@ -145,6 +146,8 @@ export function QuickAdd({ userId, onAdded }: Props) {
           payload.day_of_month = derived ?? null;
         }
       }
+      // Annual repeats use the reference date for month/day matching
+      // No additional fields needed - scheduler will match month and day from reference date
     }
 
 
@@ -339,8 +342,7 @@ export function QuickAdd({ userId, onAdded }: Props) {
             <option value="daily">Daily</option>
             <option value="weekday">Weekdays</option>
             <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly (by date)</option>
-          </select>
+            <option value="monthly">Monthly (by date)</option>            <option value="annual">Annual (yearly)</option>          </select>
           {repeat !== 'none' && (
             <div className="mt-2 flex items-center gap-2">
               <label className="text-sm">Every</label>
@@ -358,6 +360,8 @@ export function QuickAdd({ userId, onAdded }: Props) {
                   ? repeatInterval === 1 ? 'week' : 'weeks'
                   : repeat === 'monthly'
                   ? repeatInterval === 1 ? 'month' : 'months'
+                  : repeat === 'annual'
+                  ? repeatInterval === 1 ? 'year' : 'years'
                   : ''}
               </span>
 
@@ -422,6 +426,8 @@ export function QuickAdd({ userId, onAdded }: Props) {
             <label className="block text-sm mb-1">
               {repeat !== 'none' && repeatInterval > 1
                 ? 'Reference date (for interval)'
+                : repeat === 'annual'
+                ? 'Annual date (month/day)'
                 : type === 'appointment' && repeat !== 'none'
                 ? 'Start date'
                 : 'Date (optional)'}
@@ -439,8 +445,15 @@ export function QuickAdd({ userId, onAdded }: Props) {
               <p className="text-xs text-gray-600 mt-1">
                 {repeat === 'monthly' 
                   ? `Sets when the interval starts. E.g., every ${repeatInterval} month${repeatInterval > 1 ? 's' : ''} from this date. For "Read meters" every 3 months on the 1st starting Oct 1 → due Jan 1, Apr 1, Jul 1...`
+                  : repeat === 'annual'
+                  ? `Sets the date for the annual repeat. E.g., every ${repeatInterval} year${repeatInterval > 1 ? 's' : ''} on this date → anniversary, birthday, etc.`
                   : `Sets when the interval starts. E.g., every ${repeatInterval} ${repeat === 'weekly' ? 'week' : 'day'}${repeatInterval > 1 ? 's' : ''} from this date → due on interval dates...`
                 }
+              </p>
+            )}
+            {repeat === 'annual' && repeatInterval === 1 && (
+              <p className="text-xs text-gray-600 mt-1">
+                Sets the date for the annual repeat. E.g., birthdays, anniversaries, annual reviews, etc.
               </p>
             )}
           </div>

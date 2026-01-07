@@ -308,7 +308,7 @@ def _is_due_today(
     """
     Decide if a template instance is due today.
     Returns (is_due, reason).
-    - repeat_unit: 'daily' | 'weekly' | 'monthly' | None
+    - repeat_unit: 'daily' | 'weekly' | 'monthly' | 'annual' | 'yearly' | None
     - repeat_interval: >=1
     - repeat_day_int: single day for weekly (Mon=0..Sun=6) or monthly (day of month)
     - repeat_days_list: list of weekdays for weekly (Mon=0..Sun=6)
@@ -355,6 +355,15 @@ def _is_due_today(
         if repeat_day_int is None or today.day == int(repeat_day_int):
             return (True, f"monthly (months_since={months_since}, interval={repeat_interval}, day={repeat_day_int})")
         return (False, f"monthly not due today (day={today.day}, needed={repeat_day_int})")
+
+    if ru == "annual" or ru == "yearly":
+        years_since = today.year - reference_date.year
+        if years_since % max(1, int(repeat_interval or 1)) != 0:
+            return (False, f"annual not due this year (years_since={years_since}, interval={repeat_interval})")
+        # month and day check (must match reference date)
+        if today.month == reference_date.month and today.day == reference_date.day:
+            return (True, f"annual (years_since={years_since}, interval={repeat_interval}, date={reference_date.month}/{reference_date.day})")
+        return (False, f"annual not due today (today={today.month}/{today.day}, needed={reference_date.month}/{reference_date.day})")
 
     return (False, f"unsupported repeat_unit={ru}")
 def _name_for_log(row_or_task) -> str:

@@ -17,7 +17,7 @@ function clampPriority(n: unknown) {
   return p;
 }
 
-type Repeat = 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly';
+type Repeat = 'none' | 'daily' | 'weekday' | 'weekly' | 'monthly' | 'annual';
 
 export function RoutineAdd({ userId, onAdded }: Props) {
   // Core fields
@@ -85,7 +85,8 @@ export function RoutineAdd({ userId, onAdded }: Props) {
       // 🔑 CRITICAL: Include date as reference for interval calculations
       // When repeat_interval > 1, scheduler uses this date to calculate when task is due
       // E.g., biweekly task created on Nov 10 will be due Nov 10, Nov 24, Dec 8, etc.
-      if (dateStr && (repeatInterval > 1 || repeat === 'monthly')) {
+      // Annual repeats MUST have a reference date for month/day matching
+      if (dateStr && (repeatInterval > 1 || repeat === 'monthly' || repeat === 'annual')) {
         payload.date = dateStr;
       }
 
@@ -194,6 +195,7 @@ export function RoutineAdd({ userId, onAdded }: Props) {
             <option value="weekday">Weekdays</option>
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly (by date)</option>
+            <option value="annual">Annual (yearly)</option>
           </select>
           {repeat !== 'none' && (
             <div className="flex items-center gap-2">
@@ -212,6 +214,8 @@ export function RoutineAdd({ userId, onAdded }: Props) {
                   ? repeatInterval === 1 ? 'week' : 'weeks'
                   : repeat === 'monthly'
                   ? repeatInterval === 1 ? 'month' : 'months'
+                  : repeat === 'annual'
+                  ? repeatInterval === 1 ? 'year' : 'years'
                   : ''}
               </span>
             </div>

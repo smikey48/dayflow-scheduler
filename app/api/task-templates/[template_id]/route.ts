@@ -132,10 +132,10 @@ export async function PATCH(
 
   // Repeat settings
   if (typeof body.repeat_unit !== "undefined") {
-    const validUnits = ['none', 'daily', 'weekly', 'monthly', null];
+    const validUnits = ['none', 'daily', 'weekly', 'monthly', 'annual', null];
     if (!validUnits.includes(body.repeat_unit)) {
       return NextResponse.json(
-        { error_code: "validation_error", error_message: "repeat_unit must be 'none', 'daily', 'weekly', or 'monthly'." },
+        { error_code: "validation_error", error_message: "repeat_unit must be 'none', 'daily', 'weekly', 'monthly', or 'annual'." },
         { status: 400 }
       );
     }
@@ -229,6 +229,39 @@ export async function PATCH(
       { error_code: "no_changes", error_message: "No valid fields to update." },
       { status: 400 }
     );
+  }
+
+  // VALIDATION: Prevent invalid weekly tasks without days
+  if (updates.repeat_unit === 'weekly') {
+    // If repeat_days is not being set in this update, fetch the current value
+    if (typeof updates.repeat_days === 'undefined') {
+      const { data: currentTemplate } = await supabase
+        .from("task_templates")
+        .select("repeat_days")
+        .eq("id", templateId)
+        .eq("user_id", userId)
+        .single();
+      
+      // If current template has no repeat_days, we need to require it
+      if (!currentTemplate?.repeat_days || currentTemplate.repeat_days.length === 0) {
+        return NextResponse.json(
+          { 
+            error_code: "validation_error", 
+            error_message: "Weekly tasks must have at least one day selected (repeat_days). Please specify which days of the week this task should repeat on." 
+          },
+          { status: 400 }
+        );
+      }
+    } else if (updates.repeat_days === null || (Array.isArray(updates.repeat_days) && updates.repeat_days.length === 0)) {
+      // Trying to set repeat_days to null or empty array on a weekly task
+      return NextResponse.json(
+        { 
+          error_code: "validation_error", 
+          error_message: "Weekly tasks must have at least one day selected. Please specify which days of the week this task should repeat on, or change repeat_unit to 'none' or 'daily'." 
+        },
+        { status: 400 }
+      );
+    }
   }
 
   // Update (also check user_id to ensure ownership)

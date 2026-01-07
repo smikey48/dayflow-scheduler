@@ -446,8 +446,8 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         // Prefer template title/description (always current) over scheduled_tasks (denormalized snapshot)
         title: template.title || row.title,
         description: template.description || row.description,
-        // Use 'description' from DB (scheduler writes failure reasons there)
-        notes: row.description || null,
+        // Use 'description' from DB (scheduler writes failure reasons there), fallback to template description
+        notes: row.description || template.description || null,
         // Prefer template priority (always current) over scheduled_tasks (denormalized snapshot)
         priority: template.priority ?? row.priority,
         // Flatten repeat fields from joined task_templates
@@ -597,9 +597,13 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
     // If deleting template (all future occurrences), confirm with user
     if (deleteTemplate) {
       const confirmed = window.confirm(
-        'This will DELETE ALL FUTURE OCCURRENCES of this task. Are you sure?\n\n' +
-        'Click OK to permanently delete, or Cancel to go back.\n\n' +
-        'Tip: Use "Skip" instead if you only want to skip today.'
+        '⚠️ WARNING: DELETE ALL FUTURE OCCURRENCES ⚠️\n\n' +
+        'This will PERMANENTLY DELETE this recurring task template.\n' +
+        'You will NOT see this task in any future schedules.\n\n' +
+        'Are you absolutely sure you want to delete all future occurrences?\n\n' +
+        '• Click OK to permanently delete the template\n' +
+        '• Click Cancel to go back\n\n' +
+        '💡 TIP: Use "Skip to Tomorrow" if you only want to skip today\'s instance!'
       );
       if (!confirmed) return;
     }
@@ -609,18 +613,76 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
       // Extract template ID
       const templateId = scheduledTaskId.replace('template-', '');
       
-      console.log(`[AUDIT] Today page deleteTask deleting template: ${templateId} at ${new Date().toISOString()}`);
-      
-      // Soft-delete the template
-      const { error: templateError } = await supabase
-        .from('task_templates')
-        .update({ is_deleted: true })
-        .eq('id', templateId);
+      // ONLY delete the template if deleteTemplate is true
+      if (deleteTemplate) {
+        console.log(`[AUDIT] Today page deleteTask deleting template: ${templateId} at ${new Date().toISOString()}`);
+        
+        // Soft-delete the template
+        const { error: templateError } = await supabase
+          .from('task_templates')
+          .update({ is_deleted: true })
+          .eq('id', templateId);
 
-      if (templateError) {
-        console.error('Failed to delete template:', templateError);
-        setError(`Failed to delete template: ${templateError.message}`);
-        return;
+        if (templateError) {
+          console.error('Failed to delete template:', templateError);
+          setError(`Failed to delete template: ${templateError.message}`);
+          return;
+        }
+      } else {
+        // Skip this instance only - create a deleted record for today
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError('Not authenticated');
+          return;
+        }
+        
+        const todayLocal = new Intl.DateTimeFormat('en-CA', { 
+          timeZone: 'Europe/London',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(new Date());
+        
+        // Get template details to create proper deletion record
+        const { data: template, error: templateError } = await supabase
+          .from('task_templates')
+          .select('*')
+          .eq('id', templateId)
+          .single();
+          
+        if (templateError || !template) {
+          console.error('Failed to fetch template:', templateError);
+          setError(`Failed to fetch template: ${templateError?.message}`);
+          return;
+        }
+        
+        // Create a deleted record for today only
+        const { error: insertError } = await supabase
+          .from('scheduled_tasks')
+          .insert({
+            template_id: templateId,
+            user_id: user.id,
+            title: template.title,
+            description: template.description,
+            local_date: todayLocal,
+            start_time: template.start_time ? `${todayLocal}T${template.start_time}` : null,
+            end_time: template.start_time && template.duration_minutes 
+              ? new Date(new Date(`${todayLocal}T${template.start_time}`).getTime() + template.duration_minutes * 60000).toISOString()
+              : null,
+            duration_minutes: template.duration_minutes,
+            is_appointment: template.is_appointment,
+            is_routine: template.is_routine,
+            is_fixed: template.is_fixed,
+            is_completed: false,
+            is_deleted: true,  // Mark as deleted to skip this instance
+            priority: template.priority,
+          });
+          
+        if (insertError) {
+          console.error('Failed to create deletion record:', insertError);
+          setError(`Failed to skip task: ${insertError.message}`);
+          return;
+        }
       }
 
       await loadToday();
@@ -867,20 +929,19 @@ async function completeTask(scheduledTaskId: string) {
         .eq('is_deleted', false);
       
       // Run scheduler if:
-      // 1. No tasks exist for today, OR
-      // 2. Very few tasks (likely incomplete schedule), OR
-      // 3. There are floating tasks (not appointment/routine/fixed) without time slots
+      // 1. No tasks exist for today
+      // NOTE: Removed "taskCount < 5" condition - was causing unnecessary re-scheduling
+      // that would delete tasks that shouldn't be deleted (e.g., carried-forward tasks)
       const hasFloatingWithoutTimes = (existingTasks || []).some(
         task => !task.is_appointment && !task.is_routine && !task.is_fixed && !task.start_time
       );
       
       const taskCount = existingTasks?.length || 0;
-      const needsScheduling = taskCount === 0 || taskCount < 5 || hasFloatingWithoutTimes;
+      const needsScheduling = taskCount === 0 || hasFloatingWithoutTimes;
       
       if (needsScheduling) {
         console.log('[Today] Running scheduler...', { 
           noTasks: taskCount === 0,
-          fewTasks: taskCount < 5,
           hasFloatingWithoutTimes 
         });
         await runScheduler();
