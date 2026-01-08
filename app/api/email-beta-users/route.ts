@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
       if (!user.email) continue;
 
       const emailBody = {
-        from: 'DayFlow <onboarding@resend.dev>',
+        from: 'DayFlow <hello@dayflow.london>',
         to: user.email,
         subject: subject,
         text: message,
