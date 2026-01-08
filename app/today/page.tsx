@@ -591,7 +591,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
   }
 
   // ⬇️ soft-delete: mark is_deleted=true on scheduled_tasks AND optionally its template
-  async function deleteTask(scheduledTaskId: string, deleteTemplate: boolean = true) {
+  async function deleteTask(scheduledTaskId: string, deleteTemplate: boolean = false) {
     const supabase = supabaseBrowser();
     
     // If deleting template (all future occurrences), confirm with user
