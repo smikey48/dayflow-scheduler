@@ -12,24 +12,41 @@ import pandas as pd  # used to build tasks_df for schedule_day
 
 def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
     """
-    Carry forward unfinished floating tasks from yesterday:
+    Carry forward unfinished floating tasks from the last day the scheduler ran:
       - One-offs (repeat='none') → always carry forward
       - Repeats (daily/weekly/monthly) → carry forward only if NOT already present today
     Only applies to floating (non-appointment, non-routine), and not deleted/completed.
     IMPORTANT: Skip any task whose template is soft-deleted (task_templates.is_deleted = true).
     IMPORTANT: Skip any task that was explicitly deleted/skipped today (scheduled_tasks.is_deleted = true).
+    
+    NOTE: This function finds the most recent date < today that has scheduled tasks,
+    rather than always using yesterday. This handles cases where the scheduler missed days.
     """
     if supabase is None:
         print("[carry_forward] Skipped (no Supabase client).")
         return 0
 
-    yesterday = (run_date - timedelta(days=1)).isoformat()
     today = run_date.isoformat()
 
-    # 1) Get yesterday's unfinished floating tasks (we just need template_id etc.)
+    # 1) Find the most recent date before today that has scheduled tasks
+    # This handles cases where the scheduler didn't run for several days
+    last_run_resp = supabase.table("scheduled_tasks").select("local_date")\
+        .lt("local_date", today)\
+        .order("local_date", desc=True)\
+        .limit(1)\
+        .execute()
+    
+    if not last_run_resp.data:
+        print("[carry_forward] No previous scheduled tasks found.")
+        return 0
+    
+    last_run_date = last_run_resp.data[0]["local_date"]
+    print(f"[carry_forward] Last scheduler run was on {last_run_date} (today is {today})")
+
+    # 2) Get unfinished floating tasks from that last run date
     y_resp = supabase.table("scheduled_tasks").select(
         "user_id, title, template_id, duration_minutes, priority, is_appointment, is_routine, is_fixed, timezone"
-    ).eq("local_date", yesterday)\
+    ).eq("local_date", last_run_date)\
      .eq("is_deleted", False)\
      .eq("is_completed", False)\
      .eq("is_appointment", False)\
@@ -37,7 +54,7 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
      .execute()
     y_rows = y_resp.data or []
     if not y_rows:
-        print("[carry_forward] No unfinished floating tasks yesterday.")
+        print(f"[carry_forward] No unfinished floating tasks on {last_run_date}.")
         return 0
 
     # 2) Fetch the templates for those rows to inspect repeat fields AND is_deleted
@@ -135,6 +152,140 @@ def carry_forward_incomplete_one_offs(run_date: date, supabase) -> int:
     print(f"[carry_forward] Upserted {count} carried-forward tasks for {today}.")
     return count
 
+
+def carry_forward_missed_days(run_date: date, supabase) -> int:
+    """
+    For days when the scheduler didn't run, instantiate tasks that should have appeared.
+    
+    This handles cases where the scheduler missed multiple days. For each missed day:
+    - Daily tasks should have appeared
+    - Weekly tasks (if that day of week matches)
+    - Monthly tasks (if that day of month matches)
+    
+    These tasks are carried forward to today as incomplete floating tasks.
+    """
+    if supabase is None:
+        print("[carry_forward_missed] Skipped (no Supabase client).")
+        return 0
+    
+    today = run_date.isoformat()
+    
+    # 1) Find the last day the scheduler ran
+    last_run_resp = supabase.table("scheduled_tasks").select("local_date")\
+        .lt("local_date", today)\
+        .order("local_date", desc=True)\
+        .limit(1)\
+        .execute()
+    
+    if not last_run_resp.data:
+        print("[carry_forward_missed] No previous scheduled tasks found.")
+        return 0
+    
+    last_run_date_str = last_run_resp.data[0]["local_date"]
+    last_run_date = datetime.fromisoformat(last_run_date_str).date()
+    
+    # Calculate missed days
+    days_missed = (run_date - last_run_date).days - 1
+    if days_missed <= 0:
+        print(f"[carry_forward_missed] No missed days (last run: {last_run_date_str}).")
+        return 0
+    
+    print(f"[carry_forward_missed] Scheduler missed {days_missed} day(s) between {last_run_date_str} and {today}")
+    
+    # 2) Get all active templates
+    t_resp = supabase.table("task_templates").select(
+        "id, user_id, title, repeat_unit, repeat, repeat_interval, repeat_days, day_of_month, "
+        "duration_minutes, priority, is_appointment, is_routine, is_fixed, timezone, is_deleted, date"
+    ).eq("is_deleted", False).execute()
+    
+    templates = t_resp.data or []
+    if not templates:
+        print("[carry_forward_missed] No active templates found.")
+        return 0
+    
+    # 3) Check what's already scheduled for today
+    today_resp = supabase.table("scheduled_tasks").select("template_id, is_deleted")\
+        .eq("local_date", today).execute()
+    todays_templates = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id")}
+    todays_deleted = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id") and r.get("is_deleted")}
+    
+    to_insert: list[dict] = []
+    
+    # 4) For each missed day, check which tasks should have been instantiated
+    for day_offset in range(1, days_missed + 1):
+        missed_date = last_run_date + timedelta(days=day_offset)
+        missed_date_str = missed_date.isoformat()
+        
+        for tmpl in templates:
+            tid = tmpl["id"]
+            
+            # Skip if already scheduled for today or deleted today
+            if tid in todays_templates or tid in todays_deleted:
+                continue
+            
+            # Skip appointments and routines (they have fixed times, not carried forward)
+            if tmpl.get("is_appointment") or tmpl.get("is_routine"):
+                continue
+            
+            # Check if this template should have created an instance on missed_date
+            unit = (tmpl.get("repeat") or tmpl.get("repeat_unit") or "none").lower()
+            should_instantiate = False
+            
+            if unit == "daily":
+                should_instantiate = True
+            elif unit == "weekly":
+                repeat_days = tmpl.get("repeat_days") or []
+                if repeat_days:
+                    dow = missed_date.weekday()  # Monday=0, Sunday=6
+                    should_instantiate = dow in repeat_days
+            elif unit == "monthly":
+                day_of_month = tmpl.get("day_of_month")
+                if day_of_month:
+                    should_instantiate = missed_date.day == day_of_month
+            elif unit == "none":
+                # One-off: check if it was due on that missed date
+                defer_date_str = tmpl.get("date")
+                if defer_date_str:
+                    try:
+                        defer_date = datetime.fromisoformat(defer_date_str).date()
+                        if defer_date == missed_date:
+                            should_instantiate = True
+                    except (ValueError, TypeError):
+                        pass
+            
+            # If this task should have appeared on a missed day, carry it forward
+            if should_instantiate:
+                # Check if we already added this template (avoid duplicates)
+                if not any(item["template_id"] == tid for item in to_insert):
+                    to_insert.append({
+                        "user_id": tmpl["user_id"],
+                        "title": tmpl["title"],
+                        "template_id": tid,
+                        "local_date": today,
+                        "start_time": None,
+                        "end_time": None,
+                        "duration_minutes": tmpl.get("duration_minutes"),
+                        "priority": tmpl.get("priority", 3),
+                        "is_appointment": False,
+                        "is_routine": False,
+                        "is_fixed": tmpl.get("is_fixed", False),
+                        "timezone": tmpl.get("timezone", "Europe/London"),
+                    })
+                    print(f"[carry_forward_missed] Adding '{tmpl['title']}' (missed on {missed_date_str})")
+    
+    if not to_insert:
+        print("[carry_forward_missed] No tasks to carry forward from missed days.")
+        return 0
+    
+    # 5) Upsert the tasks
+    ins_resp = (
+        supabase.table("scheduled_tasks")
+        .upsert(to_insert, on_conflict="user_id,local_date,template_id")
+        .execute()
+    )
+    count = len(ins_resp.data or [])
+    print(f"[carry_forward_missed] Upserted {count} tasks from missed days.")
+    return count
 
 
 try:
@@ -442,10 +593,12 @@ def main() -> int:
         logging.info("Whitelist active (%d ids).", len(whitelist_ids))
 
     # --- Orchestration ---
-    # 0) FIRST: Carry forward incomplete tasks from yesterday so they can be scheduled
+    # 0) FIRST: Carry forward incomplete tasks from the last day the scheduler ran
     #    This must run BEFORE preprocessing so carried tasks go through the scheduler
     if sb is not None:
         carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
+        # Also carry forward tasks that should have been instantiated on missed days
+        carry_forward_missed_days(run_date=run_date, supabase=sb)
 
     # 1) Expand templates into instances for run_date
     instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb, user_id=args.user)

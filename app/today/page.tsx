@@ -591,20 +591,34 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
   }
 
   // ⬇️ soft-delete: mark is_deleted=true on scheduled_tasks AND optionally its template
-  async function deleteTask(scheduledTaskId: string, deleteTemplate: boolean = false) {
+  async function deleteTask(scheduledTaskId: string, deleteTemplate: boolean = false, isRecurring: boolean = false) {
     const supabase = supabaseBrowser();
     
     // If deleting template (all future occurrences), confirm with user
     if (deleteTemplate) {
-      const confirmed = window.confirm(
-        '⚠️ WARNING: DELETE ALL FUTURE OCCURRENCES ⚠️\n\n' +
-        'This will PERMANENTLY DELETE this recurring task template.\n' +
-        'You will NOT see this task in any future schedules.\n\n' +
-        'Are you absolutely sure you want to delete all future occurrences?\n\n' +
-        '• Click OK to permanently delete the template\n' +
-        '• Click Cancel to go back\n\n' +
-        '💡 TIP: Use "Skip to Tomorrow" if you only want to skip today\'s instance!'
-      );
+      let confirmMessage;
+      
+      if (isRecurring) {
+        // Recurring task warning
+        confirmMessage = 
+          '⚠️ WARNING: DELETE ALL FUTURE OCCURRENCES ⚠️\n\n' +
+          'This will PERMANENTLY DELETE this recurring task template.\n' +
+          'You will NOT see this task in any future schedules.\n\n' +
+          'Are you absolutely sure you want to delete all future occurrences?\n\n' +
+          '• Click OK to permanently delete the template\n' +
+          '• Click Cancel to go back\n\n' +
+          '💡 TIP: Use "Skip to Tomorrow" if you only want to skip today\'s instance!';
+      } else {
+        // One-off task/appointment confirmation
+        confirmMessage = 
+          '⚠️ CANCEL THIS APPOINTMENT ⚠️\n\n' +
+          'This will cancel this one-time appointment.\n\n' +
+          'Are you sure you want to cancel?\n\n' +
+          '• Click OK to cancel the appointment\n' +
+          '• Click Cancel to go back';
+      }
+      
+      const confirmed = window.confirm(confirmMessage);
       if (!confirmed) return;
     }
     
@@ -1213,7 +1227,7 @@ async function completeTask(scheduledTaskId: string) {
             onClick={(e) => { e.stopPropagation(); setEditing(true); }}
             title="Click to edit"
           >
-            <p className="truncate font-medium cursor-text">{row.title}</p>
+            <p className={`truncate font-medium cursor-text ${row.is_appointment ? 'text-red-600' : ''}`}>{row.title}</p>
 
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -1533,14 +1547,14 @@ async function completeTask(scheduledTaskId: string) {
                             {t.template_id && t.repeat_unit && t.repeat_unit !== 'none' ? (
                               <>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); deleteTask(t.scheduled_task_id, false); }}
+                                  onClick={(e) => { e.stopPropagation(); deleteTask(t.scheduled_task_id, false, true); }}
                                   className="text-[10px] rounded border border-yellow-300 bg-white px-2 py-1 hover:bg-yellow-50"
                                   title="Skip this occurrence only"
                                 >
                                   Skip
                                 </button>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); deleteTask(t.scheduled_task_id, true); }}
+                                  onClick={(e) => { e.stopPropagation(); deleteTask(t.scheduled_task_id, true, true); }}
                                   className="text-[10px] rounded border border-red-300 bg-white px-2 py-1 hover:bg-red-50"
                                   title="Delete all future occurrences"
                                 >
@@ -1557,7 +1571,7 @@ async function completeTask(scheduledTaskId: string) {
                                   Tomorrow
                                 </button>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); deleteTask(t.scheduled_task_id, true); }}
+                                  onClick={(e) => { e.stopPropagation(); deleteTask(t.scheduled_task_id, true, false); }}
                                   className="text-[10px] rounded border border-red-300 bg-white px-2 py-1 hover:bg-red-50"
                                   title="Remove completely"
                                 >
