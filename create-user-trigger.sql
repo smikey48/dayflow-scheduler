@@ -2,12 +2,14 @@
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.users (id, email, full_name, created_at)
+  INSERT INTO public.users (id, email, full_name, created_at, has_seen_intro, has_accepted_disclaimer)
   VALUES (
     NEW.id,
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
-    NEW.created_at
+    NEW.created_at,
+    FALSE,
+    FALSE
   );
   RETURN NEW;
 END;

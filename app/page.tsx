@@ -48,13 +48,24 @@ export default function Home() {
 
       // Check if new user needs to see intro
       if (data.session?.user.id) {
-        const { data: userDetails } = await supabase
-          .from('users')
-          .select('has_seen_intro')
-          .eq('id', data.session.user.id)
-          .single();
+        try {
+          const { data: userDetails, error } = await supabase
+            .from('users')
+            .select('has_seen_intro')
+            .eq('id', data.session.user.id)
+            .single();
 
-        if (userDetails && !userDetails.has_seen_intro) {
+          // If query fails (e.g., RLS policy issue, no record yet, or user not created), assume new user and show intro
+          // If query succeeds and has_seen_intro is false, also show intro
+          const needsIntro = !userDetails || !userDetails.has_seen_intro;
+          
+          if (needsIntro) {
+            window.location.href = '/intro';
+          }
+        } catch (err) {
+          // If there's any error querying the users table (e.g., RLS blocking, record doesn't exist),
+          // assume this is a new user and redirect to intro
+          console.warn('Error checking intro status:', err);
           window.location.href = '/intro';
         }
       }
