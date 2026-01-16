@@ -171,6 +171,22 @@ export async function POST(request: NextRequest) {
           console.error('Error updating scheduled task:', updateError);
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
+
+        // ALSO update the template if it exists and we're editing time (not moving to different date)
+        // This ensures the change persists when scheduler regenerates the schedule
+        if (templateId && oldDate === newDate && newTime) {
+          console.log('[move-appointment] Updating template start_time to persist time change');
+          const { error: templateError } = await supabase
+            .from('task_templates')
+            .update({ start_time: formattedTime })
+            .eq('id', templateId)
+            .eq('user_id', userId);
+
+          if (templateError) {
+            console.warn('[move-appointment] Failed to update template:', templateError);
+            // Don't fail the request - scheduled task was updated successfully
+          }
+        }
       }
     }
     

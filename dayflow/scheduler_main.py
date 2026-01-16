@@ -209,6 +209,24 @@ def carry_forward_missed_days(run_date: date, supabase) -> int:
     todays_templates = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id")}
     todays_deleted = {r["template_id"] for r in (today_resp.data or []) if r.get("template_id") and r.get("is_deleted")}
     
+    # NEW: Fetch all completed tasks from the missed days to avoid re-instantiating them
+    # Build list of missed day dates
+    missed_dates = [
+        (last_run_date + timedelta(days=offset)).isoformat()
+        for offset in range(1, days_missed + 1)
+    ]
+    completed_resp = supabase.table("scheduled_tasks")\
+        .select("template_id, local_date")\
+        .in_("local_date", missed_dates)\
+        .eq("is_completed", True)\
+        .execute()
+    
+    # Create a set of (template_id, date) tuples for tasks that were completed on missed days
+    completed_on_missed_days = {
+        (r["template_id"], r["local_date"]) 
+        for r in (completed_resp.data or [])
+    }
+    
     to_insert: list[dict] = []
     
     # 4) For each missed day, check which tasks should have been instantiated
@@ -255,6 +273,11 @@ def carry_forward_missed_days(run_date: date, supabase) -> int:
             
             # If this task should have appeared on a missed day, carry it forward
             if should_instantiate:
+                # IMPORTANT: Skip if this task was already completed on the missed day
+                if (tid, missed_date_str) in completed_on_missed_days:
+                    print(f"[carry_forward_missed] Skipping '{tmpl['title']}' - was completed on {missed_date_str}")
+                    continue
+                
                 # Check if we already added this template (avoid duplicates)
                 if not any(item["template_id"] == tid for item in to_insert):
                     to_insert.append({

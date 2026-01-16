@@ -21,19 +21,27 @@ def archive_delete_for_user_day(sb, user_id: str, run_date, day_start=None) -> i
     Skip archiving since reschedule can happen multiple times a day causing duplicate key errors.
     """
     # 1) Fetch ids of tasks that are NOT completed AND NOT deleted (we keep completed + skipped tasks)
-    resp = sb.table("scheduled_tasks").select("id").eq("user_id", user_id).eq("local_date", str(run_date)).eq("is_completed", False).eq("is_deleted", False).execute()
+    resp = sb.table("scheduled_tasks").select("id, title, template_id").eq("user_id", user_id).eq("local_date", str(run_date)).eq("is_completed", False).eq("is_deleted", False).execute()
 
     ids_to_delete = [row["id"] for row in (resp.data or [])]
     
     if not ids_to_delete:
-        print(f"[planner] no tasks to delete for {run_date}")
+        logging.info(f"[archive_delete_for_user_day] No incomplete tasks to delete for {run_date}")
         return 0
 
-    # 2) Delete directly without archiving (avoids duplicate key errors on repeated reschedules)
-    result = sb.table("scheduled_tasks").delete().in_("id", ids_to_delete).execute()
-    deleted_count = len(result.data) if result.data else 0
+    # Log what we're about to delete
+    logging.info(f"[archive_delete_for_user_day] Deleting {len(ids_to_delete)} task(s) for {run_date}")
+    for row in (resp.data or [])[:10]:  # Log first 10
+        logging.info(f"  - Deleting: {row.get('title', 'Untitled')} (template: {row.get('template_id', 'None')[:8] if row.get('template_id') else 'None'})")
 
-    print(f"[planner] deleted {deleted_count} incomplete, non-skipped task(s) for {run_date}")
+    # 2) Delete directly without archiving (avoids duplicate key errors on repeated reschedules)
+    try:
+        result = sb.table("scheduled_tasks").delete().in_("id", ids_to_delete).execute()
+        deleted_count = len(ids_to_delete)  # Trust that we deleted all requested IDs
+        logging.info(f"[archive_delete_for_user_day] Successfully deleted {deleted_count} task(s) for {run_date}")
+    except Exception as e:
+        logging.error(f"[archive_delete_for_user_day] Delete failed: {e}")
+        raise
 
     return deleted_count
 
@@ -896,14 +904,25 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
         tmpl_is_appt = bool(task.get("is_appointment") or tmpl_kind == "appointment")
         tmpl_is_routine = bool(task.get("is_routine") or tmpl_kind == "routine")
 
+        # CRITICAL: Ensure template_id is valid (not None/NaN)
+        template_id = task.get("id")
+        if not template_id or (isinstance(template_id, float) and pd.isna(template_id)):
+            logging.warning(f"Skipping instantiation of '{_name_for_log(task)}' - missing template id")
+            skip_events.append({
+                "template_id": "MISSING",
+                "title": task.get("task") or task.get("title"),
+                "reason": "template has no id field",
+            })
+            continue
+
         # If this template is 'floating' (one-off OR repeating), DO NOT set start/end now.
         # Let the floating scheduler place it within gaps (and respect window if present).
         if tmpl_kind == "floating":
             new_task: Dict[str, Any] = {
                 "id": str(uuid.uuid4()),
                 "user_id": str(user_id),
-                "template_id": task.get("id"),
-                "origin_template_id": task.get("id"),
+                "template_id": str(template_id),
+                "origin_template_id": str(template_id),
                 "title": task.get("task") or task.get("title") or "Untitled task",
                 "local_date": str(today.date()),
                 "date": str(today.date()),
@@ -932,8 +951,8 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
             new_task: Dict[str, Any] = {
                 "id": str(uuid.uuid4()),
                 "user_id": str(user_id),
-                "template_id": task.get("id"),
-                "origin_template_id": task.get("id"),
+                "template_id": str(template_id),
+                "origin_template_id": str(template_id),
                 "title": task.get("task") or task.get("title") or "Untitled task",
                 "local_date": str(today.date()),
                 "date": str(today.date()),
@@ -1142,10 +1161,12 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
         logging.warning("Failed to fetch unscheduled tasks: %s", e)
 
     # combine: newly generated + already active from today + carried-forward + completed tasks + unscheduled
+    # IMPORTANT: Put freshly generated tasks FIRST so template updates (like time changes) take precedence.
+    # Existing tasks are only kept if they don't conflict (e.g., manual edits to non-templated tasks).
     all_new_tasks: List[Dict] = (
         generated_tasks
-        + existing_today_tasks.to_dict(orient="records")
         + carry_forward_tasks
+        + existing_today_tasks.to_dict(orient="records")
         + completed_today_tasks.to_dict(orient="records")
         + unscheduled_tasks
     )
@@ -2064,6 +2085,14 @@ def schedule_day(
 
     # Perform upsert with explicit conflict target for NEW tasks
     print(f"schedule_day: WRITING {len(filtered_rows)} new task(s) to scheduled_tasks for {local_date_str}")
+
+    # Validate that all rows have template_id set (catch NULLs that would bypass constraint)
+    null_template_count = sum(1 for r in filtered_rows if not r.get("template_id"))
+    if null_template_count > 0:
+        logging.error(f"schedule_day: {null_template_count} row(s) have NULL template_id - will cause duplicates!")
+        for r in filtered_rows:
+            if not r.get("template_id"):
+                logging.error(f"  - NULL template_id: {r.get('title', 'Untitled')}")
 
     try:
         result = (
