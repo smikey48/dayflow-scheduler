@@ -295,9 +295,9 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
           title: t.title,
           description: t.description,
           notes: t.description,
-          is_appointment: true,
+          is_appointment: t.is_appointment || false,
           is_fixed: t.is_fixed || false,
-          is_routine: false,
+          is_routine: t.is_routine || false,
           start_time: t.start_time ? `${todayLocal}T${t.start_time}` : null,
           end_time: t.start_time && t.duration_minutes 
             ? new Date(new Date(`${todayLocal}T${t.start_time}`).getTime() + t.duration_minutes * 60000).toISOString()
@@ -361,9 +361,9 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
             title: t.title,
             description: t.description,
             notes: t.description,
-            is_appointment: true,
+            is_appointment: t.is_appointment || false,
             is_fixed: t.is_fixed || false,
-            is_routine: false,
+            is_routine: t.is_routine || false,
             start_time: t.start_time ? `${todayLocal}T${t.start_time}` : null,
             end_time: t.start_time && t.duration_minutes 
               ? new Date(new Date(`${todayLocal}T${t.start_time}`).getTime() + t.duration_minutes * 60000).toISOString()
