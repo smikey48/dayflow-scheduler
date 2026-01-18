@@ -231,8 +231,8 @@ export async function GET(request: NextRequest) {
     oneOffAppointments.forEach(template => {
       const appointmentDate = template.local_date || template.date;
       if (appointmentDate && appointmentDate >= startDate && appointmentDate <= endDate) {
-        // Check if instance already exists in scheduled_tasks
-        const exists = existingTasks?.some(
+        // Check if instance already exists in scheduled_tasks (including deleted ones)
+        const exists = allScheduledTasks?.some(
           task => task.template_id === template.id && task.local_date === appointmentDate
         );
 
