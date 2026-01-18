@@ -324,7 +324,19 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         let shouldInclude = false;
         
         if (repeatUnit === 'daily') {
-          shouldInclude = true;
+          // Daily tasks should only appear on or after their reference date
+          if (t.date) {
+            const refDate = new Date(t.date + 'T00:00:00Z');
+            if (today >= refDate) {
+              // Check interval: every N days since reference_date
+              const daysDiff = Math.floor((today.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
+              const interval = t.repeat_interval || 1;
+              shouldInclude = daysDiff % interval === 0;
+            }
+          } else {
+            // No reference date - assume starts today
+            shouldInclude = true;
+          }
         } else if (repeatUnit === 'weekly') {
           // Check repeat_days array (stored as Mon=0, Tue=1, ..., Sun=6)
           if (t.repeat_days && Array.isArray(t.repeat_days) && t.repeat_days.length > 0 && t.repeat_days.includes(dayOfWeek)) {
