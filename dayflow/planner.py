@@ -333,7 +333,16 @@ def _is_due_today(
         return (False, f"one-off not today (date={reference_date.date()}, today={today.date()})")
 
     if ru == "daily":
-        return (True, "daily")
+        # Daily tasks should only appear on or after their reference date
+        # This prevents tasks with future reference dates from appearing prematurely
+        # E.g., a daily task with date=2026-07-01 should not appear until July 1, 2026
+        if today.date() < reference_date.date():
+            return (False, f"daily task not yet active (starts {reference_date.date()})")
+        # Check interval: every N days since reference_date
+        days_since = (today - reference_date).days
+        if days_since % max(1, int(repeat_interval or 1)) != 0:
+            return (False, f"daily not due today (days_since={days_since}, interval={repeat_interval})")
+        return (True, f"daily (days_since={days_since}, interval={repeat_interval})")
 
     if ru == "weekly":
         weeks_since = (today - reference_date).days // 7
