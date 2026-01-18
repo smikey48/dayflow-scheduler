@@ -172,19 +172,34 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
         }
 
-        // ALSO update the template if it exists and we're editing time (not moving to different date)
-        // This ensures the change persists when scheduler regenerates the schedule
-        if (templateId && oldDate === newDate && newTime) {
-          console.log('[move-appointment] Updating template start_time to persist time change');
-          const { error: templateError } = await supabase
-            .from('task_templates')
-            .update({ start_time: formattedTime })
-            .eq('id', templateId)
-            .eq('user_id', userId);
+        // Update the template to keep it in sync
+        if (templateId) {
+          const updateFields: any = {};
+          
+          // If moving to a different date, update the template's reference date
+          if (oldDate !== newDate) {
+            updateFields.date = newDate;
+            console.log('[move-appointment] Updating template date to:', newDate);
+          }
+          
+          // If changing time, update the template's start_time
+          if (newTime) {
+            updateFields.start_time = formattedTime;
+            console.log('[move-appointment] Updating template start_time to:', formattedTime);
+          }
 
-          if (templateError) {
-            console.warn('[move-appointment] Failed to update template:', templateError);
-            // Don't fail the request - scheduled task was updated successfully
+          // Only update if there are changes
+          if (Object.keys(updateFields).length > 0) {
+            const { error: templateError } = await supabase
+              .from('task_templates')
+              .update(updateFields)
+              .eq('id', templateId)
+              .eq('user_id', userId);
+
+            if (templateError) {
+              console.warn('[move-appointment] Failed to update template:', templateError);
+              // Don't fail the request - scheduled task was updated successfully
+            }
           }
         }
       }
