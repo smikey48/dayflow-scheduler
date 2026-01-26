@@ -826,6 +826,19 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
             reference_date = reference_date.tz_localize(LOCAL_TIMEZONE)
         else:
             reference_date = reference_date.tz_convert(LOCAL_TIMEZONE)
+        
+        # DEBUG: Log reference date check for daily tasks
+        if repeat_unit == "daily":
+            logging.info(
+                "Daily task '%s': today=%s, ref=%s, check=%s < %s = %s",
+                task.get("task") or task.get("title"),
+                today.date(),
+                reference_date.date(),
+                today.date(),
+                reference_date.date(),
+                today.date() < reference_date.date()
+            )
+        
         if today.date() < reference_date.date():
             skip_events.append({
                 "template_id": str(task.get("id")),
@@ -1106,6 +1119,7 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
     # existing today tasks still active (retain)
     # NOTE: Include ALL non-completed, non-deleted scheduled tasks from today
     # regardless of whether their template was completed or not
+    # BUT: Filter out tasks whose templates were skipped (e.g., daily tasks with future reference dates)
     existing_today_tasks = pd.DataFrame()
     if not old_schedule_df.empty:
         existing_today_tasks = old_schedule_df[
@@ -1114,6 +1128,22 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
             (~old_schedule_df["is_completed"].fillna(False).astype(bool)) &
             (~old_schedule_df["is_deleted"].fillna(False).astype(bool))
         ]
+        
+        # CRITICAL FIX: Remove tasks whose templates were skipped (shouldn't be scheduled today)
+        # This prevents incorrectly-scheduled tasks from persisting across recreate-schedule runs
+        if not existing_today_tasks.empty:
+            skipped_template_ids = {evt["template_id"] for evt in skip_events if "template_id" in evt}
+            before_count = len(existing_today_tasks)
+            existing_today_tasks = existing_today_tasks[
+                ~existing_today_tasks["template_id"].isin(skipped_template_ids) &
+                ~existing_today_tasks["origin_template_id"].isin(skipped_template_ids)
+            ]
+            after_count = len(existing_today_tasks)
+            if before_count > after_count:
+                logging.info(
+                    "Filtered out %d existing task(s) whose templates were skipped today",
+                    before_count - after_count
+                )
         
         # Enrich existing tasks with window information and priority from their templates
         if not existing_today_tasks.empty and not tasks_df.empty:
