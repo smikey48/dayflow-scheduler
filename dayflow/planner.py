@@ -1129,10 +1129,16 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
             (~old_schedule_df["is_deleted"].fillna(False).astype(bool))
         ]
         
-        # CRITICAL FIX: Remove tasks whose templates were skipped (shouldn't be scheduled today)
-        # This prevents incorrectly-scheduled tasks from persisting across recreate-schedule runs
+        # CRITICAL FIX: Remove tasks whose templates were skipped for reasons OTHER than
+        # 'already instantiated today'. That skip reason is expected and should NOT
+        # cause us to drop existing tasks (it creates oscillation on rebuild).
         if not existing_today_tasks.empty:
-            skipped_template_ids = {evt["template_id"] for evt in skip_events if "template_id" in evt}
+            skipped_template_ids = {
+                evt["template_id"]
+                for evt in skip_events
+                if "template_id" in evt
+                and not str(evt.get("reason", "")).startswith("already instantiated today")
+            }
             before_count = len(existing_today_tasks)
             existing_today_tasks = existing_today_tasks[
                 ~existing_today_tasks["template_id"].isin(skipped_template_ids) &
@@ -1397,10 +1403,50 @@ def schedule_day(
 
     # filter for tasks that potentially have fixed times (appointments, routines, fixed recurring)
     # these are tasks where start_time and end_time should be set.
+    # normalize floating flags before building prescheduled_df
+    if 'is_floating' in tasks_df.columns:
+        tasks_df['is_floating'] = tasks_df['is_floating'].fillna(False).astype(bool)
+    else:
+        tasks_df['is_floating'] = False
+
+    if 'kind' in tasks_df.columns:
+        kind_is_floating = (
+            tasks_df['kind']
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .eq('floating')
+            .fillna(False)
+        )
+        tasks_df['is_floating'] = tasks_df['is_floating'] | kind_is_floating
+
+    # Floating tasks should never be treated as fixed/routine/appointment for scheduling
+    for flag in ['is_fixed', 'is_routine', 'is_appointment']:
+        if flag not in tasks_df.columns:
+            tasks_df[flag] = False
+        tasks_df.loc[tasks_df['is_floating'], flag] = False
+
     # include only rows where start_time and end_time are NOT NaN/NaT
     # debugging print
     # print ("\nFUNCTION schedule_day tasks_df before dropna:\n", tasks_df)
     prescheduled_df = tasks_df.dropna(subset=['start_time', 'end_time'], how='any').copy()
+
+    # Only keep tasks that are truly fixed/routine/appointment in prescheduled_df.
+    # This prevents already-timed floating tasks from being dropped here.
+    for flag in ['is_appointment', 'is_routine', 'is_fixed']:
+        if flag not in prescheduled_df.columns:
+            prescheduled_df[flag] = False
+        else:
+            prescheduled_df[flag] = (
+                prescheduled_df[flag]
+                .astype('boolean')
+                .fillna(False)
+                .astype(bool)
+            )
+    prescheduled_df = prescheduled_df[
+        prescheduled_df['is_appointment'] | prescheduled_df['is_routine'] | prescheduled_df['is_fixed']
+    ].copy()
+
     if 'kind' in prescheduled_df.columns:
         prescheduled_df = prescheduled_df[
             prescheduled_df['kind'].astype(str).str.strip().str.lower() != 'floating'
@@ -1623,11 +1669,23 @@ def schedule_day(
     else:
         tasks_df['is_floating'] = tasks_df['is_floating'].fillna(False).astype(bool)
     
-    # Infer is_floating from other flags: if not appointment/routine/fixed, it's floating
+    # Infer is_floating from other flags: if not appointment/routine/fixed (WITH times), it's floating
     is_appt = tasks_df.get('is_appointment', pd.Series([False] * len(tasks_df))).fillna(False).astype(bool)
     is_rout = tasks_df.get('is_routine', pd.Series([False] * len(tasks_df))).fillna(False).astype(bool)
     is_fix = tasks_df.get('is_fixed', pd.Series([False] * len(tasks_df))).fillna(False).astype(bool)
-    inferred_floating = ~(is_appt | is_rout | is_fix)
+
+    # Only treat a task as fixed/appointment/routine if it has a valid time range
+    start_series = tasks_df.get('start_time', pd.Series([None] * len(tasks_df)))
+    end_series = tasks_df.get('end_time', pd.Series([None] * len(tasks_df)))
+    has_start = start_series.notna() & start_series.astype(str).str.strip().ne('')
+    has_end = end_series.notna() & end_series.astype(str).str.strip().ne('')
+    has_times = has_start & has_end
+
+    is_appt_effective = is_appt & has_times
+    is_rout_effective = is_rout & has_times
+    is_fix_effective = is_fix & has_times
+
+    inferred_floating = ~(is_appt_effective | is_rout_effective | is_fix_effective)
     tasks_df['is_floating'] = tasks_df['is_floating'] | inferred_floating
     if 'window_start_local' not in tasks_df.columns:
         tasks_df['window_start_local'] = None
@@ -1669,9 +1727,21 @@ def schedule_day(
         .astype(int)
     )
 
+    # Deterministic ordering to avoid oscillation between runs.
+    # Sort by priority (asc), then duration (desc to protect long tasks), then a stable tie-breaker.
+    tie = (
+        floating_tasks_only_df.get('origin_template_id')
+        .fillna(floating_tasks_only_df.get('template_id'))
+        .fillna(floating_tasks_only_df.get('title'))
+        .fillna(floating_tasks_only_df.get('task'))
+        .fillna(floating_tasks_only_df.get('id'))
+        .astype(str)
+    )
+    floating_tasks_only_df['_tie'] = tie
     floating_tasks_only_df = floating_tasks_only_df.sort_values(
-        by=['priority', 'duration_minutes'],
-        ascending=[True, True]
+        by=['priority', 'duration_minutes', '_tie'],
+        ascending=[True, False, True],
+        kind='mergesort'
     ).copy()
 
     # debugging print
@@ -1681,6 +1751,22 @@ def schedule_day(
         priority = task.get('priority', '?')
         duration = task.get('duration_minutes', '?')
         print(f"  - {task_name}: priority={priority}, duration={duration}min")
+        if task_name and "fix phil" in str(task_name).lower():
+            print("[DEBUG] Fix Phil task snapshot:", {
+                "title": task_name,
+                "template_id": task.get("template_id"),
+                "origin_template_id": task.get("origin_template_id"),
+                "priority": priority,
+                "duration_minutes": duration,
+                "window_start_local": task.get("window_start_local"),
+                "window_end_local": task.get("window_end_local"),
+                "is_floating": task.get("is_floating"),
+                "is_fixed": task.get("is_fixed"),
+                "is_routine": task.get("is_routine"),
+                "is_appointment": task.get("is_appointment"),
+                "start_time": task.get("start_time"),
+                "end_time": task.get("end_time"),
+            })
     # print("\nFUNCTION schedule_day - floating_tasks_only_df sorted for scheduling:\n", floating_tasks_only_df)
     def _allowed_range_for_task(day_start_ts, day_end_ts, task_row):
         """
@@ -1813,6 +1899,8 @@ def schedule_day(
                     "end_time": end_time,
                     "duration_minutes": task['duration_minutes'],
                     "id": task.get('id', str(uuid.uuid4())),
+                    "template_id": task.get('template_id') or task.get('origin_template_id'),
+                    "origin_template_id": task.get('origin_template_id') or task.get('template_id'),
                     "is_floating": True,
                     "is_scheduled": True,
                     "is_completed": False,
@@ -1822,7 +1910,6 @@ def schedule_day(
                     "repeat": task.get('repeat'),
                     "repeat_unit": task.get('repeat_unit'),
                     "repeat_day": task.get('repeat_day'),
-                    "origin_template_id": task.get('origin_template_id'),
                     "is_recurring": task.get('is_recurring', False),
                     "is_fixed": task.get('is_fixed', False),
                     "is_routine": task.get('is_routine', False),
@@ -1863,9 +1950,168 @@ def schedule_day(
                 break  # move to next floating task
 
         if not assigned:
-            print(f"No room inside window for '{task.get('task', task.get('title', 'Unnamed'))}' "
+            task_name = task.get('title', task.get('task', 'Unnamed'))
+            print(f"No room inside window for '{task_name}' "
                   f"[{allowed_start.strftime('%H:%M')}–{allowed_end.strftime('%H:%M')}]; deferring.")
+            if task_name and "fix phil" in str(task_name).lower():
+                print("[DEBUG] Fix Phil unscheduled details:", {
+                    "title": task_name,
+                    "template_id": task.get("template_id"),
+                    "origin_template_id": task.get("origin_template_id"),
+                    "priority": task.get("priority"),
+                    "duration_minutes": task.get("duration_minutes"),
+                    "window_start_local": task.get("window_start_local"),
+                    "window_end_local": task.get("window_end_local"),
+                    "is_floating": task.get("is_floating"),
+                    "is_fixed": task.get("is_fixed"),
+                    "is_routine": task.get("is_routine"),
+                    "is_appointment": task.get("is_appointment"),
+                    "start_time": task.get("start_time"),
+                    "end_time": task.get("end_time"),
+                })
             unscheduled_tasks.append(task)
+
+
+    # Second pass: recompute gaps from all scheduled items and retry unscheduled tasks
+    if unscheduled_tasks:
+        def _compute_gaps(all_sched, day_start_ts, day_end_ts):
+            # all_sched: list of dicts with start_time/end_time
+            slots = sorted(
+                [s for s in all_sched if s.get('start_time') is not None and s.get('end_time') is not None],
+                key=lambda x: x['start_time']
+            )
+            gaps = []
+            current = day_start_ts
+            for s in slots:
+                st = s['start_time']
+                en = s['end_time']
+                if st > current:
+                    gaps.append((current, st))
+                if en > current:
+                    current = en
+            if current < day_end_ts:
+                gaps.append((current, day_end_ts))
+            return gaps
+
+        # Normalize unscheduled tasks into a DataFrame for sorting
+        retry_df = pd.DataFrame([
+            t.to_dict() if hasattr(t, 'to_dict') else dict(t)
+            for t in unscheduled_tasks
+        ])
+
+        if not retry_df.empty:
+            # Coerce duration/priority
+            retry_df['duration_minutes'] = pd.to_numeric(
+                retry_df.get('duration_minutes'), errors='coerce'
+            ).fillna(0).astype(int)
+            if 'priority' not in retry_df.columns:
+                retry_df['priority'] = 3
+            retry_df['priority'] = pd.to_numeric(retry_df['priority'], errors='coerce').fillna(3).astype(int)
+            retry_tie = (
+                retry_df.get('origin_template_id')
+                .fillna(retry_df.get('template_id'))
+                .fillna(retry_df.get('title'))
+                .fillna(retry_df.get('task'))
+                .fillna(retry_df.get('id'))
+                .astype(str)
+            )
+            retry_df['_tie'] = retry_tie
+            retry_df = retry_df.sort_values(
+                by=['priority', 'duration_minutes', '_tie'],
+                ascending=[True, False, True],
+                kind='mergesort'
+            )
+
+            free_gaps_list = _compute_gaps(all_scheduled, day_start, day_end)
+            remaining = []
+
+            for _, task in retry_df.iterrows():
+                if task['duration_minutes'] <= 0:
+                    remaining.append(task)
+                    continue
+
+                duration = pd.to_timedelta(task['duration_minutes'], unit='minutes')
+                assigned = False
+                allowed_start, allowed_end = _allowed_range_for_task(day_start, day_end, task)
+                if allowed_end <= allowed_start:
+                    remaining.append(task)
+                    continue
+
+                free_gaps_list.sort(key=lambda x: x[0])
+                for gap_idx in range(len(free_gaps_list)):
+                    gap_start, gap_end = free_gaps_list[gap_idx]
+                    eff_start = max(gap_start, allowed_start)
+                    eff_end = min(gap_end, allowed_end)
+                    if (eff_end - eff_start) >= duration:
+                        start_time, end_time = find_next_free_slot(eff_start, duration, all_scheduled)
+                        if start_time is None or end_time is None or end_time > eff_end:
+                            continue
+
+                        # normalize + clamp priority (1 = highest)
+                        p = task.get('priority', 3)
+                        try:
+                            p = int(p)
+                        except (TypeError, ValueError):
+                            p = 3
+                        p = 1 if p < 1 else (5 if p > 5 else p)
+
+                        scheduled_floating_tasks_list.append({
+                            "task": task.get('task', 'Unnamed'),
+                            "title": task.get('title') if isinstance(task.get('title'), str) and task.get('title').strip() else task.get('task', 'Untitled task'),
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "duration_minutes": task['duration_minutes'],
+                            "id": task.get('id', str(uuid.uuid4())),
+                            "template_id": task.get('template_id') or task.get('origin_template_id'),
+                            "origin_template_id": task.get('origin_template_id') or task.get('template_id'),
+                            "is_floating": True,
+                            "is_scheduled": True,
+                            "is_completed": False,
+                            "is_deleted": False,
+                            "priority": p,
+                            "repeat": task.get('repeat'),
+                            "repeat_unit": task.get('repeat_unit'),
+                            "repeat_day": task.get('repeat_day'),
+                            "is_recurring": task.get('is_recurring', False),
+                            "is_fixed": task.get('is_fixed', False),
+                            "is_routine": task.get('is_routine', False),
+                            "is_appointment": task.get('is_appointment', False),
+                            "is_aspiration": task.get('is_aspiration', False),
+                            "date": today_tz_aware.date(),
+                            "window_start_local": task.get("window_start_local"),
+                            "window_end_local": task.get("window_end_local"),
+                        })
+
+                        all_scheduled.append({'start_time': start_time, 'end_time': end_time})
+
+                        gap_before = (gap_start, start_time) if start_time > gap_start else None
+                        gap_after = (end_time, gap_end) if end_time < gap_end else None
+                        free_gaps_list.pop(gap_idx)
+                        if gap_before:
+                            free_gaps_list.insert(gap_idx, gap_before)
+                            if gap_after:
+                                free_gaps_list.insert(gap_idx + 1, gap_after)
+                        elif gap_after:
+                            free_gaps_list.insert(gap_idx, gap_after)
+
+                        assigned = True
+                        break
+
+                if not assigned:
+                    task_name = task.get('title', task.get('task', 'Unnamed'))
+                    if task_name and "fix phil" in str(task_name).lower():
+                        print("[DEBUG] Fix Phil still unscheduled after retry:", {
+                            "title": task_name,
+                            "template_id": task.get("template_id"),
+                            "origin_template_id": task.get("origin_template_id"),
+                            "priority": task.get("priority"),
+                            "duration_minutes": task.get("duration_minutes"),
+                            "window_start_local": task.get("window_start_local"),
+                            "window_end_local": task.get("window_end_local"),
+                        })
+                    remaining.append(task)
+
+            unscheduled_tasks = remaining
 
 
     if unscheduled_tasks:
