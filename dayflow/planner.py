@@ -1205,14 +1205,15 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
     except Exception as e:
         logging.warning("Failed to fetch unscheduled tasks: %s", e)
 
-    # combine: newly generated + already active from today + carried-forward + completed tasks + unscheduled
+    # combine: newly generated + already active from today + carried-forward + unscheduled
+    # IMPORTANT: Completed tasks are already in scheduled_tasks and should not affect placement.
+    # We keep them in the DB for the Done list but do NOT feed them back into scheduling.
     # IMPORTANT: Put freshly generated tasks FIRST so template updates (like time changes) take precedence.
     # Existing tasks are only kept if they don't conflict (e.g., manual edits to non-templated tasks).
     all_new_tasks: List[Dict] = (
         generated_tasks
         + carry_forward_tasks
         + existing_today_tasks.to_dict(orient="records")
-        + completed_today_tasks.to_dict(orient="records")
         + unscheduled_tasks
     )
 
