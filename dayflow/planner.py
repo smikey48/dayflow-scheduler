@@ -1452,6 +1452,10 @@ def schedule_day(
             prescheduled_df['kind'].astype(str).str.strip().str.lower() != 'floating'
         ].copy()
 
+    # Completed tasks should never block scheduling gaps
+    if 'is_completed' in prescheduled_df.columns:
+        prescheduled_df = prescheduled_df[~prescheduled_df['is_completed'].fillna(False).astype(bool)].copy()
+
     # debugging print
     # print ("\nFUNCTION schedule_day prescheduled_df after dropna:\n", prescheduled_df)
     if prescheduled_df.empty or 'start_time' not in prescheduled_df.columns:
