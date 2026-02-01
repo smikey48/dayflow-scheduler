@@ -360,8 +360,23 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         } else if (repeatUnit === 'weekday' || repeatUnit === 'weekdays') {
           shouldInclude = dayOfWeek >= 0 && dayOfWeek <= 4; // Monday(0) to Friday(4)
         } else if (repeatUnit === 'monthly') {
-          if (t.day_of_month) {
-            shouldInclude = today.getUTCDate() === t.day_of_month;
+          if (t.day_of_month && today.getUTCDate() === t.day_of_month) {
+            // Day of month matches, now check if we're on or after the reference date
+            // and respect the repeat_interval for bi-monthly, quarterly, etc.
+            if (t.date) {
+              const refDate = new Date(t.date + 'T00:00:00Z');
+              if (today >= refDate) {
+                // Calculate months difference
+                const monthsDiff = (today.getUTCFullYear() - refDate.getUTCFullYear()) * 12 
+                                 + (today.getUTCMonth() - refDate.getUTCMonth());
+                const interval = t.repeat_interval || 1;
+                shouldInclude = monthsDiff % interval === 0;
+              }
+              // If today < refDate, shouldInclude stays false
+            } else {
+              // No reference date - assume it starts today
+              shouldInclude = true;
+            }
           }
         }
         
@@ -948,34 +963,11 @@ async function completeTask(scheduledTaskId: string) {
         day: '2-digit'
       }).format(new Date());
       
-      const { data: existingTasks } = await supabase
-        .from('scheduled_tasks')
-        .select('id, start_time, is_appointment, is_routine, is_fixed')
-        .eq('local_date', todayLocal)
-        .eq('is_deleted', false);
-      
-      // Run scheduler if:
-      // 1. No tasks exist for today
-      // NOTE: Removed "taskCount < 5" condition - was causing unnecessary re-scheduling
-      // that would delete tasks that shouldn't be deleted (e.g., carried-forward tasks)
-      const hasFloatingWithoutTimes = (existingTasks || []).some(
-        task => !task.is_appointment && !task.is_routine && !task.is_fixed && !task.start_time
-      );
-      
-      const taskCount = existingTasks?.length || 0;
-      const needsScheduling = taskCount === 0 || hasFloatingWithoutTimes;
-      
-      if (needsScheduling) {
-        console.log('[Today] Running scheduler...', { 
-          noTasks: taskCount === 0,
-          hasFloatingWithoutTimes 
-        });
-        await runScheduler();
-        // Wait a moment for the scheduler to complete and database to update
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } else {
-        console.log('[Today] Schedule appears complete, skipping scheduler');
-      }
+      // Always run the scheduler when Today view loads to ensure schedule is fresh
+      console.log('[Today] Running scheduler to ensure fresh schedule for', todayLocal);
+      await runScheduler();
+      // Wait a moment for the scheduler to complete and database to update
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       await loadToday();
     })();
