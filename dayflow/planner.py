@@ -1064,44 +1064,11 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
                         if row.get("origin_template_id") in [t.get("origin_template_id") for t in generated_tasks]:
                             continue
                         
-                        # For monthly/weekly tasks, verify they're actually due today before carrying forward
-                        if repeat_unit in ["weekly", "monthly"]:
-                            ref_date_str = row.get("date")
-                            if ref_date_str:
-                                try:
-                                    ref_date = pd.to_datetime(ref_date_str).date()
-                                    repeat_day = row.get("repeat_day")
-                                    day_of_month = row.get("day_of_month")
-                                    repeat_days = row.get("repeat_days")
-                                    
-                                    if repeat_unit == "monthly":
-                                        months_since = (today.year - ref_date.year) * 12 + (today.month - ref_date.month)
-                                        if months_since % max(1, repeat_interval) != 0:
-                                            print(f"[carry-forward] Skipping '{row.get('title')}': not due this month (months_since={months_since}, interval={repeat_interval})")
-                                            continue
-                                        repeat_day_int = int(day_of_month) if pd.notna(day_of_month) else (int(repeat_day) if repeat_day is not None else None)
-                                        if repeat_day_int is not None and today.day != repeat_day_int:
-                                            print(f"[carry-forward] Skipping '{row.get('title')}': wrong day of month (today={today.day}, needed={repeat_day_int})")
-                                            continue
-                                    elif repeat_unit == "weekly":
-                                        days_since = (today - ref_date).days
-                                        weeks_since = days_since // 7
-                                        if weeks_since % max(1, repeat_interval) != 0:
-                                            print(f"[carry-forward] Skipping '{row.get('title')}': not in a due week")
-                                            continue
-                                        if repeat_days:
-                                            dow = today.weekday()
-                                            if dow not in repeat_days:
-                                                print(f"[carry-forward] Skipping '{row.get('title')}': wrong day of week")
-                                                continue
-                                        elif repeat_day is not None:
-                                            dow = today.weekday()
-                                            if dow != int(repeat_day):
-                                                print(f"[carry-forward] Skipping '{row.get('title')}': wrong day of week")
-                                                continue
-                                except Exception as e:
-                                    print(f"[carry-forward] Error checking '{row.get('title')}': {e}")
-                                    continue
+                        # NOTE: We intentionally DO NOT check if the task is "due today" here.
+                        # If a weekly task was due on Saturday but not completed, it should be
+                        # carried forward to Sunday (and Monday, etc.) until completed.
+                        # The "due today" check only applies to generating NEW instances from
+                        # templates, not to preserving existing incomplete tasks.
                         
                         d = dict(row)
                         # set today’s date & keep fields consistent
@@ -1130,21 +1097,49 @@ def preprocess_recurring_tasks(run_date: date, supabase: Any, user_id: Optional[
         ]
         
         # CRITICAL FIX: Remove tasks whose templates were skipped for reasons OTHER than
-        # 'already instantiated today'. That skip reason is expected and should NOT
-        # cause us to drop existing tasks (it creates oscillation on rebuild).
+        # expected scheduling reasons. These reasons should NOT cause us to drop
+        # existing (carried-forward) tasks:
+        # 1. 'already instantiated today' - task exists, don't duplicate
+        # 2. 'weekly not due today' - task was carried forward from its scheduled day
+        # 3. 'monthly not due today' - task was carried forward from its scheduled day
+        # 4. 'daily not due today' - task was carried forward from its scheduled day
+        # 5. 'annual not due' - task was carried forward from its scheduled day
+        # These are valid reasons to not create a NEW instance, but existing carried-forward
+        # tasks should be preserved (otherwise editing a carried-forward task and rebuilding
+        # the schedule causes the task to disappear).
         if not existing_today_tasks.empty:
+            def _should_filter_existing_task(reason: str) -> bool:
+                """Return True if this skip reason means we should filter out existing tasks."""
+                reason = str(reason).lower()
+                # These reasons are expected for carried-forward tasks - DON'T filter
+                preserve_patterns = [
+                    "already instantiated today",
+                    "weekly not due today",
+                    "monthly not due today",
+                    "daily not due today",
+                    "annual not due",
+                    "one-off not today",  # One-off tasks that were carried forward
+                ]
+                for pattern in preserve_patterns:
+                    if pattern in reason:
+                        return False  # Don't filter - preserve this existing task
+                return True  # Filter out - this is a genuine skip reason
+            
             skipped_template_ids = {
                 evt["template_id"]
                 for evt in skip_events
                 if "template_id" in evt
-                and not str(evt.get("reason", "")).startswith("already instantiated today")
+                and _should_filter_existing_task(evt.get("reason", ""))
             }
+            
             before_count = len(existing_today_tasks)
+            
             existing_today_tasks = existing_today_tasks[
                 ~existing_today_tasks["template_id"].isin(skipped_template_ids) &
                 ~existing_today_tasks["origin_template_id"].isin(skipped_template_ids)
             ]
             after_count = len(existing_today_tasks)
+            
             if before_count > after_count:
                 logging.info(
                     "Filtered out %d existing task(s) whose templates were skipped today",
