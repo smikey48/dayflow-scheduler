@@ -304,9 +304,12 @@ export async function PATCH(
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
     console.log(`[PATCH task-templates/${templateId}] start_time updated, syncing scheduled_tasks for ${today}`);
     
+    // Build full timestamp from today's date and the new time
+    const fullStartTime = body.start_time ? `${today}T${body.start_time}` : null;
+    
     const { data: scheduledData, error: scheduledError } = await supabase
       .from('scheduled_tasks')
-      .update({ start_time: body.start_time })
+      .update({ start_time: fullStartTime })
       .eq('template_id', templateId)
       .eq('user_id', userId)
       .eq('local_date', today)
