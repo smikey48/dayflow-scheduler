@@ -223,7 +223,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         id, template_id, title, description, is_appointment, is_fixed, is_routine, 
         start_time, end_time, duration_minutes, is_completed, priority,
         task_templates!template_id (
-          title, description, repeat, repeat_unit, repeat_interval, repeat_day, repeat_days, day_of_month, date,
+          title, description, notes, repeat, repeat_unit, repeat_interval, repeat_day, repeat_days, day_of_month, date,
           window_start_local, window_end_local, priority
         )
       `)
@@ -387,7 +387,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
             template_id: t.id,
             title: t.title,
             description: t.description,
-            notes: t.description,
+            notes: t.description || t.notes || null,
             is_appointment: t.is_appointment || false,
             is_fixed: t.is_fixed || false,
             is_routine: t.is_routine || false,
@@ -473,8 +473,8 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         // Prefer template title/description (always current) over scheduled_tasks (denormalized snapshot)
         title: template.title || row.title,
         description: template.description || row.description,
-        // Use 'description' from DB (scheduler writes failure reasons there), fallback to template description
-        notes: row.description || template.description || null,
+        // Priority: template.description (canonical) > template.notes (legacy) > row.description (instance notes)
+        notes: template.description || template.notes || row.description || null,
         // Prefer template priority (always current) over scheduled_tasks (denormalized snapshot)
         priority: template.priority ?? row.priority,
         // Flatten repeat fields from joined task_templates
@@ -1641,7 +1641,7 @@ async function completeTask(scheduledTaskId: string) {
               
               const body: any = { 
                 kind: task_type,
-                notes: notes,
+                description: notes,  // Save "Notes" field to template.description so it displays correctly
                 repeat_unit, 
                 priority
               };
@@ -1711,15 +1711,15 @@ async function completeTask(scheduledTaskId: string) {
               }
             }}>
               <div className="space-y-4">
-                {/* Notes field */}
+                {/* Description field */}
                 <div>
-                  <label className="block text-sm font-medium mb-1">Notes</label>
+                  <label className="block text-sm font-medium mb-1">Description (optional)</label>
                   <textarea
                     name="notes"
                     defaultValue={editingTask.notes || ''}
                     rows={3}
                     className="w-full border rounded px-3 py-2 text-sm"
-                    placeholder="Add notes for this task instance..."
+                    placeholder="Add a description for this task..."
                   />
                 </div>
 

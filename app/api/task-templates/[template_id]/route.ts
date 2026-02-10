@@ -7,6 +7,7 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 type PatchBody = {
   title?: string;
   description?: string | null;
+  notes?: string | null;
   priority?: number | string | null;
   duration_minutes?: number | string | null;
   kind?: string | null;
@@ -75,6 +76,10 @@ export async function PATCH(
     updates.description = body.description ? String(body.description).trim() : null;
   }
 
+  if (typeof body.notes !== "undefined") {
+    updates.notes = body.notes ? String(body.notes).trim() : null;
+  }
+
   if (typeof body.start_time !== "undefined") {
     updates.start_time = body.start_time;
   }
@@ -141,6 +146,10 @@ export async function PATCH(
     }
     // Keep 'none' as-is (it's a string value, not NULL)
     updates.repeat_unit = body.repeat_unit;
+    
+    // IMPORTANT: Also sync the legacy 'repeat' field to prevent mismatches
+    // The carry-forward logic uses 'repeat' first, so they must stay in sync
+    updates.repeat = body.repeat_unit;
     
     // When changing to one-off (none), clear repeat-related fields
     // BUT: Keep date for appointments (they need it for one-off events)
