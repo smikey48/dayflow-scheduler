@@ -616,12 +616,8 @@ def main() -> int:
         logging.info("Whitelist active (%d ids).", len(whitelist_ids))
 
     # --- Orchestration ---
-    # 0) FIRST: Carry forward incomplete tasks from the last day the scheduler ran
-    #    This must run BEFORE preprocessing so carried tasks go through the scheduler
-    if sb is not None:
-        carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
-        # Also carry forward tasks that should have been instantiated on missed days
-        carry_forward_missed_days(run_date=run_date, supabase=sb)
+    # NOTE: carry_forward_incomplete_one_offs now runs AFTER schedule_day to avoid
+    # having carried-forward tasks deleted by schedule_day's cleanup.
 
     # 1) Expand templates into instances for run_date
     instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb, user_id=args.user)
@@ -803,6 +799,18 @@ def main() -> int:
 
     count_scheduled = len(schedule) if hasattr(schedule, "__len__") else None
     logging.info("Scheduled %s item(s).", count_scheduled if count_scheduled is not None else "unknown")
+
+    # 5) AFTER schedule_day: Carry forward incomplete floating tasks from previous day(s)
+    #    This runs AFTER schedule_day so carried-forward tasks aren't deleted by cleanup.
+    #    These are floating tasks (no start_time) that will appear in the unscheduled section.
+    if sb is not None:
+        carry_count = carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
+        if carry_count:
+            logging.info("Carried forward %d incomplete floating task(s).", carry_count)
+        # Also carry forward tasks that should have been instantiated on missed days
+        missed_count = carry_forward_missed_days(run_date=run_date, supabase=sb)
+        if missed_count:
+            logging.info("Carried forward %d task(s) from missed days.", missed_count)
 
     return 0
 
