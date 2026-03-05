@@ -227,6 +227,33 @@ def carry_forward_missed_days(run_date: date, supabase) -> int:
         for r in (completed_resp.data or [])
     }
     
+    # FIX: Also fetch templates that have been "stopped" by the user
+    # A template is considered stopped if its most recent instance was deleted (not completed)
+    # This handles cases where user marked a recurring task as "Done" (which deletes instances)
+    template_ids = [t["id"] for t in templates]
+    stopped_templates = set()
+    if template_ids:
+        # Get the most recent instance for each template to check if it was deleted
+        recent_instances_resp = supabase.table("scheduled_tasks")\
+            .select("template_id, local_date, is_deleted, is_completed")\
+            .in_("template_id", template_ids)\
+            .order("local_date", desc=True)\
+            .execute()
+        
+        # Build a dict of template_id -> most recent instance state
+        # Track templates where the most recent instance was deleted (user stopped the task)
+        seen_templates = set()
+        for r in (recent_instances_resp.data or []):
+            tid = r.get("template_id")
+            if tid and tid not in seen_templates:
+                seen_templates.add(tid)
+                # If the most recent instance was deleted and not completed, user stopped the task
+                if r.get("is_deleted") and not r.get("is_completed"):
+                    stopped_templates.add(tid)
+        
+        if stopped_templates:
+            print(f"[carry_forward_missed] Found {len(stopped_templates)} stopped template(s) - will not re-instantiate")
+    
     to_insert: list[dict] = []
     
     # 4) For each missed day, check which tasks should have been instantiated
@@ -239,6 +266,10 @@ def carry_forward_missed_days(run_date: date, supabase) -> int:
             
             # Skip if already scheduled for today or deleted today
             if tid in todays_templates or tid in todays_deleted:
+                continue
+            
+            # Skip templates that the user has stopped (most recent instance was deleted)
+            if tid in stopped_templates:
                 continue
             
             # Skip appointments and routines (they have fixed times, not carried forward)
@@ -616,8 +647,22 @@ def main() -> int:
         logging.info("Whitelist active (%d ids).", len(whitelist_ids))
 
     # --- Orchestration ---
-    # NOTE: carry_forward_incomplete_one_offs now runs AFTER schedule_day to avoid
-    # having carried-forward tasks deleted by schedule_day's cleanup.
+    # NOTE: carry_forward runs FIRST so that step 3b can pick up the carried-forward
+    # tasks and include them in schedule_day(). schedule_day() will delete old tasks
+    # but then upsert all tasks (including carried-forward) with proper start_times,
+    # so they won't be lost - they get scheduled!
+    
+    # 0) Carry forward incomplete floating tasks from previous day(s) FIRST
+    #    This creates tasks with NULL start_time in the DB, which step 3b will pick up
+    #    and pass to schedule_day for proper scheduling.
+    if sb is not None:
+        carry_count = carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
+        if carry_count:
+            logging.info("Carried forward %d incomplete floating task(s).", carry_count)
+        # Also carry forward tasks that should have been instantiated on missed days
+        missed_count = carry_forward_missed_days(run_date=run_date, supabase=sb)
+        if missed_count:
+            logging.info("Carried forward %d task(s) from missed days.", missed_count)
 
     # 1) Expand templates into instances for run_date
     instances = preprocess_recurring_tasks(run_date=run_date, supabase=sb, user_id=args.user)
@@ -799,18 +844,6 @@ def main() -> int:
 
     count_scheduled = len(schedule) if hasattr(schedule, "__len__") else None
     logging.info("Scheduled %s item(s).", count_scheduled if count_scheduled is not None else "unknown")
-
-    # 5) AFTER schedule_day: Carry forward incomplete floating tasks from previous day(s)
-    #    This runs AFTER schedule_day so carried-forward tasks aren't deleted by cleanup.
-    #    These are floating tasks (no start_time) that will appear in the unscheduled section.
-    if sb is not None:
-        carry_count = carry_forward_incomplete_one_offs(run_date=run_date, supabase=sb)
-        if carry_count:
-            logging.info("Carried forward %d incomplete floating task(s).", carry_count)
-        # Also carry forward tasks that should have been instantiated on missed days
-        missed_count = carry_forward_missed_days(run_date=run_date, supabase=sb)
-        if missed_count:
-            logging.info("Carried forward %d task(s) from missed days.", missed_count)
 
     return 0
 

@@ -101,6 +101,8 @@ type Row = {
   is_appointment: boolean;
   is_fixed: boolean;
   is_routine: boolean;
+  is_scheduled?: boolean | null;
+  scheduling_error?: string | null;
   start_time: string | null;
   end_time: string | null;
   duration_minutes: number | null;
@@ -184,16 +186,27 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
           'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({ force: true, write: true }),
+        credentials: 'include', // Ensure cookies are sent
       });
       
+      console.log('[runScheduler] Response status:', response.status);
+      const responseText = await response.text();
+      console.log('[runScheduler] Response text:', responseText);
+      
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch (parseErr) {
+        console.error('[runScheduler] Failed to parse JSON:', parseErr);
+        errorData = { parseError: true, text: responseText };
+      }
+      
       if (!response.ok) {
-        const errorData = await response.json();
         console.error('[runScheduler] Failed:', errorData);
         return false;
       }
       
-      const result = await response.json();
-      console.log('[runScheduler] Success:', result);
+      console.log('[runScheduler] Success:', errorData);
       return true;
     } catch (error) {
       console.error('[runScheduler] Error:', error);
@@ -467,13 +480,26 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
         });
       }
       
+      // Detect if task is unscheduled: no start_time AND description contains scheduling error pattern
+      // Error messages contain phrases like "No available time slot" or "Window has passed"
+      const isSchedulingError = (desc: string | null | undefined): boolean => {
+        if (!desc) return false;
+        return desc.includes('No available time slot') || 
+               desc.includes('Window has passed') || 
+               desc.includes('window') && desc.includes('[');
+      };
+      const isUnscheduled = !row.start_time && isSchedulingError(row.description);
+      const schedulingError = isUnscheduled ? row.description : null;
+      
       return {
         ...row, 
         scheduled_task_id: row.id,
+        is_scheduled: !isUnscheduled,
+        scheduling_error: schedulingError,
         // Prefer template title/description (always current) over scheduled_tasks (denormalized snapshot)
         title: template.title || row.title,
         description: template.description || row.description,
-        // Priority: template.description (canonical) > template.notes (legacy) > row.description (instance notes)
+        // For notes: if task is scheduled, use template desc/notes; if unscheduled, keep scheduling error available
         notes: template.description || template.notes || row.description || null,
         // Prefer template priority (always current) over scheduled_tasks (denormalized snapshot)
         priority: template.priority ?? row.priority,
@@ -697,10 +723,10 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
           return;
         }
         
-        // Create a deleted record for today only
+        // Create a deleted record for today only (use upsert to handle existing rows)
         const { error: insertError } = await supabase
           .from('scheduled_tasks')
-          .insert({
+          .upsert({
             template_id: templateId,
             user_id: user.id,
             title: template.title,
@@ -717,7 +743,7 @@ const [showNavMenu, setShowNavMenu] = useState<boolean>(false);
             is_completed: false,
             is_deleted: true,  // Mark as deleted to skip this instance
             priority: template.priority,
-          });
+          }, { onConflict: 'user_id,local_date,template_id' });
           
         if (insertError) {
           console.error('Failed to create deletion record:', insertError);
@@ -886,10 +912,10 @@ async function completeTask(scheduledTaskId: string) {
       return;
     }
     
-    // Create scheduled task and mark as completed
+    // Create scheduled task and mark as completed (use upsert to handle existing rows)
     const { error: insertError } = await supabase
       .from('scheduled_tasks')
-      .insert({
+      .upsert({
         template_id: templateId,
         user_id: user.id,
         title: template.title,
@@ -906,7 +932,7 @@ async function completeTask(scheduledTaskId: string) {
         is_completed: true,
         is_deleted: false,
         priority: template.priority,
-      });
+      }, { onConflict: 'user_id,local_date,template_id' });
       
     if (insertError) {
       console.error('Failed to create and complete task:', insertError);
@@ -946,14 +972,15 @@ async function completeTask(scheduledTaskId: string) {
     const supabase = supabaseBrowser();
 
     (async () => {
-      const { data: u, error: ue } = await supabase.auth.getUser();
-      if (ue || !u.user) {
-        // No authenticated user - redirect to login
-        console.log('[Today] No authenticated user, redirecting to login');
+      // Use getSession() for auth check - this ensures we have both user and token
+      const { data: { session }, error: se } = await supabase.auth.getSession();
+      if (se || !session?.user) {
+        // No authenticated session - redirect to login
+        console.log('[Today] No authenticated session, redirecting to login');
         router.push('/auth/login');
         return;
       }
-      setAuthUid(u.user.id);
+      setAuthUid(session.user.id);
       
       // Check if we have any tasks for today
       const todayLocal = new Intl.DateTimeFormat('en-CA', { 
@@ -965,7 +992,19 @@ async function completeTask(scheduledTaskId: string) {
       
       // Always run the scheduler when Today view loads to ensure schedule is fresh
       console.log('[Today] Running scheduler to ensure fresh schedule for', todayLocal);
-      await runScheduler();
+      
+      // Run scheduler with retry to handle any transient auth issues
+      let schedulerSuccess = await runScheduler();
+      if (!schedulerSuccess) {
+        // Retry once after a short delay in case of timing issues
+        console.log('[Today] Scheduler failed, retrying after delay...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        schedulerSuccess = await runScheduler();
+        if (!schedulerSuccess) {
+          console.warn('[Today] Scheduler retry also failed, continuing with existing data');
+        }
+      }
+      
       // Wait a moment for the scheduler to complete and database to update
       await new Promise(resolve => setTimeout(resolve, 1000));
       
@@ -1462,7 +1501,7 @@ async function completeTask(scheduledTaskId: string) {
                                   <span className="text-xs text-gray-500"> – {fmtTime(t.end_time)}</span>
                                 )}
                               </p>
-                            ) : t.notes && (t.notes.includes('No available time slot') || t.notes.includes('window')) ? (
+                            ) : t.is_scheduled === false ? (
                               <p className="text-xs text-amber-600 font-medium">⚠️ Not scheduled</p>
                             ) : (
                               <p className="text-xs text-gray-500">~{t.duration_minutes ?? 25}m</p>
@@ -1480,15 +1519,17 @@ async function completeTask(scheduledTaskId: string) {
                               </div>
                             </div>
                             
-                            {t.notes && !t.notes.includes('No available time slot') && !t.notes.includes('window') && (
+                            {/* Show regular notes (task description) */}
+                            {t.notes && (
                               <p className="mt-1 text-xs text-gray-600 line-clamp-2" style={{ fontFamily: 'Georgia, serif' }}>
                                 {t.notes}
                               </p>
                             )}
 
-                            {t.notes && (t.notes.includes('No available time slot') || t.notes.includes('window')) && (
+                            {/* Show scheduling error when task is unscheduled */}
+                            {t.is_scheduled === false && t.scheduling_error && (
                               <p className="mt-1 text-xs text-amber-700 italic">
-                                {t.notes}
+                                {t.scheduling_error}
                               </p>
                             )}
 
@@ -1814,6 +1855,7 @@ async function completeTask(scheduledTaskId: string) {
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
                     <option value="monthly">Monthly</option>
+                    <option value="annual">Annual (yearly)</option>
                   </select>
                 </div>
 
@@ -1829,7 +1871,7 @@ async function completeTask(scheduledTaskId: string) {
                         className="w-full border rounded px-3 py-2"
                         id="repeat_interval_input"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Every N {editModalRepeatUnit === 'daily' ? 'days' : editModalRepeatUnit === 'weekly' ? 'weeks' : 'months'}</p>
+                      <p className="text-xs text-gray-500 mt-1">Every N {editModalRepeatUnit === 'daily' ? 'days' : editModalRepeatUnit === 'weekly' ? 'weeks' : editModalRepeatUnit === 'monthly' ? 'months' : 'years'}</p>
                     </div>
                     
                     <div>

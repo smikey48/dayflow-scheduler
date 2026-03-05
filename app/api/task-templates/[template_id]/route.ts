@@ -322,6 +322,26 @@ export async function PATCH(
     }
   }
 
+  // If duration_minutes was updated, also update today's scheduled instance
+  if (typeof body.duration_minutes !== 'undefined') {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    console.log(`[PATCH task-templates/${templateId}] duration_minutes updated to ${body.duration_minutes}, syncing scheduled_tasks for ${today}`);
+    
+    const { data: scheduledData, error: scheduledError } = await supabase
+      .from('scheduled_tasks')
+      .update({ duration_minutes: updates.duration_minutes })
+      .eq('template_id', templateId)
+      .eq('user_id', userId)
+      .eq('local_date', today)
+      .select();
+    
+    if (scheduledError) {
+      console.error(`[PATCH task-templates/${templateId}] Failed to update scheduled_tasks duration:`, scheduledError);
+    } else {
+      console.log(`[PATCH task-templates/${templateId}] Updated duration for ${scheduledData?.length ?? 0} scheduled tasks for today`);
+    }
+  }
+
   // Note: Auto-reschedule disabled - user should manually click "Recreate Schedule" button
   // to see template changes reflected in today's schedule
 

@@ -76,10 +76,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: updateError.message }, { status: 500 });
           }
         } else {
-          // Create scheduled task for new date
+          // Create scheduled task for new date (use upsert to handle existing rows)
           const { error: insertError } = await supabase
             .from('scheduled_tasks')
-            .insert({
+            .upsert({
               template_id: templateId,
               user_id: userId,
               title: title,
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
               is_routine: isRoutine,
               is_deleted: false,
               is_completed: false,
-            });
+            }, { onConflict: 'user_id,local_date,template_id' });
 
           if (insertError) {
             console.error('Error inserting scheduled task:', insertError);
@@ -124,13 +124,13 @@ export async function POST(request: NextRequest) {
               return NextResponse.json({ error: deleteError.message }, { status: 500 });
             }
           } else {
-            // Create a deleted record for the old date to hide it
+            // Create a deleted record for the old date to hide it (use upsert)
             const oldStartTime = startTime ? `${oldDate}T${startTime.split('T')[1]}` : null;
             const oldEndTime = endTime ? `${oldDate}T${endTime.split('T')[1]}` : null;
 
             const { error: deleteError } = await supabase
               .from('scheduled_tasks')
-              .insert({
+              .upsert({
                 template_id: templateId,
                 user_id: userId,
                 title: title,
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
                 is_routine: isRoutine,
                 is_deleted: true,
                 is_completed: false,
-              });
+              }, { onConflict: 'user_id,local_date,template_id' });
 
             if (deleteError) {
               console.error('Error creating deletion record:', deleteError);

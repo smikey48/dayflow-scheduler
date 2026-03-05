@@ -1576,18 +1576,9 @@ def schedule_day(
         duration = task_dict['end_time'] - task_dict['start_time'] # calculate duration
 
         if task_dict.get('is_appointment'):
-            # appointments keep their original time
-            if task_dict['start_time'] >= day_start and task_dict['end_time'] <= day_end:
-                final_schedule_list.append(task_dict)
-            else:
-                task_name = task_dict.get('task', 'Unnamed')
-                print(f"Appointment '{task_name}' is outside the day boundaries ({day_start.strftime('%H:%M')} - {day_end.strftime('%H:%M')}).")
-                # In non-interactive/cron environments we skip by default.
-                # user_input = input(f"Do you want to include '{task_name}' anyway? (y/n): ").strip().lower()
-                # if user_input == 'y':
-                #     final_schedule_list.append(task_dict)
-                # else:
-                #     print(f"Skipping '{task_name}'.")
+            # Appointments always keep their original time and are always included
+            # even if the appointment time has already passed (so users can see their full day)
+            final_schedule_list.append(task_dict)
 
         elif task_dict.get('is_fixed'):
              # Fixed tasks (non-routine) cannot be moved past their scheduled time - skip if time has passed
@@ -1729,14 +1720,13 @@ def schedule_day(
 
     # Deterministic ordering to avoid oscillation between runs.
     # Sort by priority (asc), then duration (desc to protect long tasks), then a stable tie-breaker.
-    tie = (
-        floating_tasks_only_df.get('origin_template_id')
-        .fillna(floating_tasks_only_df.get('template_id'))
-        .fillna(floating_tasks_only_df.get('title'))
-        .fillna(floating_tasks_only_df.get('task'))
-        .fillna(floating_tasks_only_df.get('id'))
-        .astype(str)
-    )
+    # Build tie-breaker column safely, checking each column exists before using fillna
+    tie_cols = ['origin_template_id', 'template_id', 'title', 'task', 'id']
+    tie = pd.Series([None] * len(floating_tasks_only_df), index=floating_tasks_only_df.index)
+    for col in tie_cols:
+        if col in floating_tasks_only_df.columns:
+            tie = tie.fillna(floating_tasks_only_df[col])
+    tie = tie.fillna('').astype(str)
     floating_tasks_only_df['_tie'] = tie
     floating_tasks_only_df = floating_tasks_only_df.sort_values(
         by=['priority', 'duration_minutes', '_tie'],
@@ -2007,14 +1997,13 @@ def schedule_day(
             if 'priority' not in retry_df.columns:
                 retry_df['priority'] = 3
             retry_df['priority'] = pd.to_numeric(retry_df['priority'], errors='coerce').fillna(3).astype(int)
-            retry_tie = (
-                retry_df.get('origin_template_id')
-                .fillna(retry_df.get('template_id'))
-                .fillna(retry_df.get('title'))
-                .fillna(retry_df.get('task'))
-                .fillna(retry_df.get('id'))
-                .astype(str)
-            )
+            # Build tie-breaker, handling missing columns (fillna(None) fails in pandas 2.x)
+            retry_tie = retry_df.get('origin_template_id')
+            for col in ['template_id', 'title', 'task', 'id']:
+                fallback = retry_df.get(col)
+                if fallback is not None:
+                    retry_tie = retry_tie.fillna(fallback)
+            retry_tie = retry_tie.astype(str)
             retry_df['_tie'] = retry_tie
             retry_df = retry_df.sort_values(
                 by=['priority', 'duration_minutes', '_tie'],
@@ -2378,6 +2367,9 @@ def schedule_day(
         for r in filtered_rows:
             if not r.get("template_id"):
                 logging.error(f"  - NULL template_id: {r.get('title', 'Untitled')}")
+
+    # Dedupe filtered_rows by (user_id, local_date, template_id) to prevent constraint violations
+    filtered_rows = _dedupe_by_conflict(filtered_rows)
 
     try:
         result = (

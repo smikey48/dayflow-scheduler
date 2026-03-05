@@ -10,6 +10,12 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   console.log('[revise] Request received at', new Date().toISOString());
+  
+  // Debug: log cookies and headers for troubleshooting
+  const cookieNames = Array.from(req.cookies.getAll()).map(c => c.name);
+  console.log('[revise] Cookies present:', cookieNames);
+  console.log('[revise] Auth header:', req.headers.get('Authorization')?.substring(0, 30) + '...');
+  
   try {
     // Get authenticated user
     const userId = await getAuthenticatedUserId(req);

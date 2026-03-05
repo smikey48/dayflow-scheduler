@@ -452,7 +452,7 @@ export default function Calendar() {
           // This is a future instance - create a deleted record to prevent it from showing
           const { error } = await supabase
             .from('scheduled_tasks')
-            .insert({
+            .upsert({
               template_id: selectedTask.template_id,
               user_id: userId,
               title: selectedTask.title,
@@ -464,7 +464,7 @@ export default function Calendar() {
               is_routine: selectedTask.is_routine,
               is_deleted: true,
               is_completed: false,
-            });
+            }, { onConflict: 'user_id,local_date,template_id' });
 
           if (error) throw error;
         } else {
@@ -491,7 +491,7 @@ export default function Calendar() {
           if (selectedTask.is_future_instance) {
             const { error } = await supabase
               .from('scheduled_tasks')
-              .insert({
+              .upsert({
                 template_id: selectedTask.template_id,
                 user_id: userId,
                 title: selectedTask.title,
@@ -503,7 +503,7 @@ export default function Calendar() {
                 is_routine: selectedTask.is_routine,
                 is_deleted: true,
                 is_completed: false,
-              });
+              }, { onConflict: 'user_id,local_date,template_id' });
 
             if (error) throw error;
           } else {
@@ -547,7 +547,7 @@ export default function Calendar() {
         // This is a future instance - create a deleted record to prevent it from showing
         const { error } = await supabase
           .from('scheduled_tasks')
-          .insert({
+          .upsert({
             template_id: selectedTask.template_id,
             user_id: userId,
             title: selectedTask.title,
@@ -559,7 +559,7 @@ export default function Calendar() {
             is_routine: selectedTask.is_routine,
             is_deleted: true,
             is_completed: false,
-          });
+          }, { onConflict: 'user_id,local_date,template_id' });
 
         if (error) throw error;
       } else {
