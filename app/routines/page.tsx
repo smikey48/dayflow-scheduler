@@ -5,6 +5,11 @@ import { supabaseBrowser } from '../../lib/supabaseBrowser';
 import { useEffect, useState } from 'react';
 import FeedbackButton from '../components/FeedbackButton';
 
+/** Format a Date as YYYY-MM-DD in Europe/London timezone */
+function toLocalDateString(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(date);
+}
+
 type Routine = {
   id: string;
   title: string;
@@ -194,7 +199,7 @@ export default function RoutinesPage() {
       }
       
       if (earliestDate) {
-        return formatDate(earliestDate.toISOString().split('T')[0]);
+        return formatDate(toLocalDateString(earliestDate));
       }
     }
     return null;
@@ -387,7 +392,7 @@ export default function RoutinesPage() {
                           }
                           
                           if (earliestDate) {
-                            setEditModalDate(earliestDate.toISOString().split('T')[0]);
+                            setEditModalDate(toLocalDateString(earliestDate));
                           } else {
                             setEditModalDate(dateStr);
                           }

@@ -3,6 +3,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabaseBrowser } from '../../lib/supabaseBrowser';
 
+/** Format a Date as YYYY-MM-DD in Europe/London timezone */
+function toLocalDateString(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(date);
+}
+
 type CalendarTask = {
   id: string;
   title: string;
@@ -80,8 +85,8 @@ export default function Calendar() {
     setLoading(true);
     try {
       const { start, end } = getDateRange();
-      const startDate = start.toISOString().split('T')[0];
-      const endDate = end.toISOString().split('T')[0];
+      const startDate = toLocalDateString(start);
+      const endDate = toLocalDateString(end);
       console.log(`[Calendar.fetchTasks] Date range: ${startDate} to ${endDate}`);
 
       const supabase = supabaseBrowser();
@@ -247,11 +252,11 @@ export default function Calendar() {
   const getHeaderTitle = () => {
     if (viewMode === 'week') {
       const { start, end } = getDateRange();
-      const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-      const endStr = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+      const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Europe/London' });
+      const endStr = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/London' });
       return `${startStr} - ${endStr}`;
     } else {
-      return currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+      return currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'Europe/London' });
     }
   };
 
@@ -530,7 +535,7 @@ export default function Calendar() {
   const handleSkipOccurrence = async () => {
     if (!selectedTask) return;
 
-    if (!window.confirm(`Skip this occurrence of "${selectedTask.title}" on ${new Date(selectedTask.local_date).toLocaleDateString('en-GB')}?`)) {
+    if (!window.confirm(`Skip this occurrence of "${selectedTask.title}" on ${new Date(selectedTask.local_date + 'T12:00:00').toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}?`)) {
       return;
     }
 
@@ -648,19 +653,19 @@ export default function Calendar() {
             <div className="absolute top-2 left-2 text-xs text-amber-400 opacity-50">Left</div>
             <div className="space-y-6">
               {days.slice(0, 3).map((day) => {
-                const dateKey = day.toISOString().split('T')[0];
+                const dateKey = toLocalDateString(day);
                 const dayTasks = tasksByDate[dateKey] || [];
                 const isToday = day.toDateString() === new Date().toDateString();
 
                 return (
-                  <div key={day.toISOString()} className="pb-6 border-b border-amber-200 last:border-0">
+                  <div key={toLocalDateString(day)} className="pb-6 border-b border-amber-200 last:border-0">
                     <div className="flex items-baseline justify-between mb-3">
                       <div>
                         <h3 className={`text-2xl font-serif ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
-                          {day.toLocaleDateString('en-GB', { weekday: 'long' })}
+                          {day.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'Europe/London' })}
                         </h3>
                         <p className="text-sm text-gray-500 font-serif">
-                          {day.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
+                          {day.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'Europe/London' })}
                         </p>
                       </div>
                       {isToday && (
@@ -715,19 +720,19 @@ export default function Calendar() {
             <div className="absolute top-2 right-2 text-xs text-amber-400 opacity-50">Right</div>
             <div className="space-y-6">
               {days.slice(3, 7).map((day) => {
-                const dateKey = day.toISOString().split('T')[0];
+                const dateKey = toLocalDateString(day);
                 const dayTasks = tasksByDate[dateKey] || [];
                 const isToday = day.toDateString() === new Date().toDateString();
 
                 return (
-                  <div key={day.toISOString()} className="pb-6 border-b border-amber-200 last:border-0">
+                  <div key={toLocalDateString(day)} className="pb-6 border-b border-amber-200 last:border-0">
                     <div className="flex items-baseline justify-between mb-3">
                       <div>
                         <h3 className={`text-2xl font-serif ${isToday ? 'text-blue-600' : 'text-gray-800'}`}>
-                          {day.toLocaleDateString('en-GB', { weekday: 'long' })}
+                          {day.toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'Europe/London' })}
                         </h3>
                         <p className="text-sm text-gray-500 font-serif">
-                          {day.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}
+                          {day.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'Europe/London' })}
                         </p>
                       </div>
                       {isToday && (
@@ -780,7 +785,7 @@ export default function Calendar() {
 
           {/* Day cells */}
           {days.map((day, idx) => {
-            const dateKey = day.toISOString().split('T')[0];
+            const dateKey = toLocalDateString(day);
             const dayTasks = tasksByDate[dateKey] || [];
             const isToday = day.toDateString() === new Date().toDateString();
             const isCurrentMonth = day.getMonth() === currentDate.getMonth();
@@ -788,19 +793,19 @@ export default function Calendar() {
 
             return (
               <div
-                key={day.toISOString()}
+                key={toLocalDateString(day)}
                 className={`min-h-[100px] border rounded p-2 ${
                   isToday ? 'bg-blue-50 border-blue-300' : 
                   isOtherMonth ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
                 } cursor-pointer transition-colors`}
                 onClick={() => handleTimeSlotClick(day, 9)}
-                title={`${day.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`}
+                title={`${day.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/London' })}`}
               >
                 <div className={`text-sm font-medium mb-2 ${
                   isToday ? 'text-blue-600' : 
                   isOtherMonth ? 'text-gray-400' : ''
                 }`}>
-                  {day.getDate()}
+                  {new Intl.DateTimeFormat('en-GB', { day: 'numeric', timeZone: 'Europe/London' }).format(day)}
                 </div>
                 <div className="space-y-1">
                   {dayTasks.map((task) => (
@@ -861,11 +866,12 @@ export default function Calendar() {
               
               <div>
                 <span className="font-medium text-gray-600">Date:</span>{' '}
-                {new Date(selectedTask.local_date).toLocaleDateString('en-GB', {
+                {new Date(selectedTask.local_date + 'T12:00:00').toLocaleDateString('en-GB', {
                   weekday: 'long',
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
+                  timeZone: 'Europe/London',
                 })}
               </div>
               

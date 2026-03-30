@@ -12,8 +12,10 @@ export default function SchedulerButton() {
     setIsRunning(true);
     setMessage(null);
     try {
+      // Get today's date in Europe/London timezone as YYYY-MM-DD
+      const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
       const body = {
-        date: new Date().toISOString().slice(0, 10), // YYYY-MM-DD
+        date: todayLocal,
         force: true,
         write: true,
       };

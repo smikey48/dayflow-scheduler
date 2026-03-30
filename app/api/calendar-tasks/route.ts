@@ -6,6 +6,11 @@ import { getAuthenticatedUserId } from '@/lib/auth';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+/** Format a Date as YYYY-MM-DD in Europe/London timezone */
+function toLocalDateString(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(date);
+}
+
 export async function GET(request: NextRequest) {
   const requestStartTime = Date.now();
   console.log(`[calendar-tasks API] Request received at ${new Date().toISOString()}`);
@@ -193,7 +198,7 @@ export async function GET(request: NextRequest) {
 
         if (shouldInclude) {
           // Check if instance already exists (including deleted ones)
-          const dateKey = currentDate.toISOString().split('T')[0];
+          const dateKey = toLocalDateString(currentDate);
           const exists = allScheduledTasks?.some(
             task => task.template_id === template.id && task.local_date === dateKey
           );
