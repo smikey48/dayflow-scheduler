@@ -230,13 +230,6 @@ export default function Calendar() {
     return daysArray;
   }, [viewMode, currentDate]);
 
-  // Debug: Log the days array dateKeys
-  React.useEffect(() => {
-    console.log('[Calendar Debug] Days array dateKeys:', days.map(d => toLocalDateString(d)));
-    console.log('[Calendar Debug] Browser timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
-    console.log('[Calendar Debug] First day raw:', days[0]?.toString());
-  }, [days]);
-
   // Group tasks by date and sort by start time
   const tasksByDate = tasks.reduce((acc, task) => {
     if (!acc[task.local_date]) {
@@ -245,12 +238,6 @@ export default function Calendar() {
     acc[task.local_date].push(task);
     return acc;
   }, {} as Record<string, CalendarTask[]>);
-
-  // Debug: Log tasks by date
-  React.useEffect(() => {
-    console.log('[Calendar Debug] Tasks by date:', Object.keys(tasksByDate));
-    tasks.forEach(t => console.log(`[Calendar Debug] Task: "${t.title}" local_date=${t.local_date}`));
-  }, [tasks]);
 
   // Sort tasks within each date by start time
   Object.keys(tasksByDate).forEach(date => {
