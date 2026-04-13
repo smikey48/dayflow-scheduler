@@ -280,17 +280,39 @@ def carry_forward_missed_days(run_date: date, supabase) -> int:
             unit = (tmpl.get("repeat") or tmpl.get("repeat_unit") or "none").lower()
             should_instantiate = False
             
+            # Get repeat_interval (default 1) and reference date for interval calculations
+            repeat_interval = max(1, int(tmpl.get("repeat_interval") or 1))
+            ref_date_str = tmpl.get("date")
+            if ref_date_str:
+                try:
+                    reference_date = datetime.fromisoformat(ref_date_str).date()
+                except (ValueError, TypeError):
+                    reference_date = missed_date
+            else:
+                reference_date = missed_date
+            
             if unit == "daily":
-                should_instantiate = True
+                # Check repeat_interval for daily tasks (every N days)
+                days_since = (missed_date - reference_date).days
+                if days_since >= 0 and days_since % repeat_interval == 0:
+                    should_instantiate = True
             elif unit == "weekly":
+                # Check BOTH: correct day of week AND correct week (repeat_interval)
                 repeat_days = tmpl.get("repeat_days") or []
                 if repeat_days:
                     dow = missed_date.weekday()  # Monday=0, Sunday=6
-                    should_instantiate = dow in repeat_days
+                    if dow in repeat_days:
+                        # Also check if this is a valid week based on repeat_interval
+                        weeks_since = (missed_date - reference_date).days // 7
+                        if weeks_since >= 0 and weeks_since % repeat_interval == 0:
+                            should_instantiate = True
             elif unit == "monthly":
                 day_of_month = tmpl.get("day_of_month")
-                if day_of_month:
-                    should_instantiate = missed_date.day == day_of_month
+                if day_of_month and missed_date.day == int(day_of_month):
+                    # Check repeat_interval for monthly tasks (every N months)
+                    months_since = (missed_date.year - reference_date.year) * 12 + (missed_date.month - reference_date.month)
+                    if months_since >= 0 and months_since % repeat_interval == 0:
+                        should_instantiate = True
             elif unit == "none":
                 # One-off: check if it was due on that missed date
                 defer_date_str = tmpl.get("date")
